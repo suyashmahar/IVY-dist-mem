@@ -27,7 +27,7 @@ using std::optional;
 using std::span;
 using std::vector;
 
-constexpr static size_t NODES = 2;
+constexpr static size_t NODES = 4;
 
 struct shm_hdr {
   uint64_t elems;      /* Total num of elements in shm */

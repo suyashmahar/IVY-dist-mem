@@ -19,7 +19,7 @@ using std::optional;
 using std::span;
 using std::vector;
 
-constexpr static size_t NODES = 2;
+constexpr static size_t NODES = 4;
 constexpr static pid_t CHILD_PID = 0;
 
 struct shm_hdr {
@@ -104,7 +104,6 @@ void merge_worker() {
   
   while (!done()) {
     vector<uint64_t> cur_elems(NODES);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     uint64_t max_elem = 0;
     uint64_t max_idx;
