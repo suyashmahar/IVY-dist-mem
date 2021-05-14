@@ -1,5 +1,5 @@
 # Distributed shared virtual memory 
-Using Ivy fixed ownership model
+Using IVY's fixed ownership model.
 
 ## Project structure
 1. [analysis](analysis/): Memory trace visualization
