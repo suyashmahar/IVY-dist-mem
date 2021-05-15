@@ -4,7 +4,7 @@ include $(SELF_DIR)colors.make
 
 CXXFLAGS    :=-std=gnu++20 -ggdb3 -O0 -fPIC -Wall
 CXXFLAGS    +=-fno-omit-frame-pointer
-CXXFLAGS    +=$(PUDDLES_CXXFLAGS) #-fsanitize=address -fsanitize=leak
+CXXFLAGS    +=$(EXTRA_CXXFLAGS) #-fsanitize=address -fsanitize=leak
 CXXFLAGS    +=$(FLUSH_INST_FLAG)
 LDFLAGS     :=$(EXTRA_LDFLAGS)
 LINKFLAGS   :=$(EXTRA_LINKFLAGS)
@@ -32,5 +32,5 @@ endif
 %_clean:
 	$(IVY_MAKE) -C $(subst _clean,,$@) clean
 
-clean:
+default_clean_%:
 	@-rm -f *.o *.a *.so

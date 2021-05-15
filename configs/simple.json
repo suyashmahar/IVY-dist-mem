@@ -1,0 +1,8 @@
+{
+    "nodes": [
+	"localhost:2000",
+	"localhost:2001",
+	"localhost:2002"
+    ],
+    "manager_id": 0
+}

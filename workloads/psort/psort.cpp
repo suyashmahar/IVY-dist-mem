@@ -13,6 +13,8 @@
 #include <unistd.h>
 #include <vector>
 
+#include "libivy.hh"
+
 typedef uint8_t *byte_ptr;
 
 using std::optional;
@@ -127,14 +129,26 @@ void merge_worker() {
 
 int main(int argc, char *argv[]) {
   std::string in_fname = "";
-
-  if (argc != 2) {
-    std::cout << "USAGE: " << argv[0] <<  " <path to input file>"
+  std::string cfg_fname = "";
+  uint64_t id = 0;
+  
+  if (argc != 4) {    
+    std::cout << "USAGE: " << argv[0]
+	      <<  " <path to input file> <path to config file> <id>"
 	      << std::endl;
     exit(1);
   } else {
     in_fname = std::string(argv[1]);
-    std::cout << "Reading file " << in_fname << std::endl;
+    cfg_fname = std::string(argv[2]);
+    id = std::strtoull(argv[3], NULL, 0);
+  }
+
+  Ivy ivy(cfg_fname, id);
+
+  auto is_manager = ivy.is_manager();
+  if (!ivy_chk<bool>(is_manager)) {
+    std::cout << "Is manager = "
+	      << std::get<bool>(ivy.is_manager()) << std::endl;
   }
 
   std::fstream in_f(in_fname);
