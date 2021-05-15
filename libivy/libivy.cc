@@ -32,12 +32,23 @@ Ivy::Ivy(std::string cfg_f, idx_t id) {
   if (id >= this->nodes.size()) {
     IVY_ERROR("Node id cannot be greater than total number of nodes");
   }
+
+  this->id = id;
+  this->addr = this->nodes[id];
 }
 
-Ivy::~Ivy() {}
+Ivy::~Ivy() = default;
 
-Ivy::res_t<Ivy::void_ptr> Ivy::get_shm() { return nullptr; }
+Ivy::res_t<Ivy::void_ptr> Ivy::get_shm() { return {nullptr, {}}; }
 Ivy::res_t<std::monostate> Ivy::drop_shm(void_ptr region) { return {}; }
-Ivy::res_t<bool> Ivy::is_manager() { return true; }
-Ivy::res_t<bool> Ivy::ca_va() { return true; }
+
+Ivy::res_t<bool> Ivy::is_manager() {
+  if (this->id == this->manager_id) {
+    return {true, {}};
+  } else {
+    return {false, {}};
+  }
+}
+
+Ivy::res_t<bool> Ivy::ca_va() { return {true, {}}; }
 

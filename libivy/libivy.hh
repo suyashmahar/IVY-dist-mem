@@ -15,15 +15,27 @@
 
 #include "json.hpp"
 
+using std::optional;
+using std::pair;
 using std::string;
 using std::variant;
 using std::vector;
 
 class Ivy {
+public:
+  using idx_t = uint64_t;
+  using err_t = std::string;
+
+  template <typename T>
+  using res_t = pair<T, optional<err_t>>;
+
+  using void_ptr = void*;
   
 private:
   using json = nlohmann::json;
 
+  idx_t id;
+  string addr;
   json cfg;
   
   vector<string> nodes;
@@ -32,15 +44,7 @@ private:
   string NODES_KEY = "nodes";
   string MANAGER_ID_KEY = "manager_id";
 
-public:
-  using idx_t = uint64_t;
-  using err_t = std::string;
-
-  template <typename T>
-  using res_t = variant<T, err_t>;
-
-  using void_ptr = void*;
-  
+public:  
   Ivy(std::string cfg_f, idx_t id);
   ~Ivy();
 
