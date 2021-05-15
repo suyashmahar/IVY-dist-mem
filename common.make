@@ -31,3 +31,6 @@ endif
 
 %_clean:
 	$(IVY_MAKE) -C $(subst _clean,,$@) clean
+
+clean:
+	@-rm -f *.o *.a *.so

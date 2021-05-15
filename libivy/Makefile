@@ -19,6 +19,4 @@ libivy.so: $(OBJECTS) $(DEPENDS)
 	$(IVY_CXX) $(CXXFLAGS) $(INCLUDE) $(LDFLAGS) -shared -o $@ \
 		$(OBJECTS) $(LINKFLAGS)
 
-clean:
-	-rm -f *.o *.so
 
