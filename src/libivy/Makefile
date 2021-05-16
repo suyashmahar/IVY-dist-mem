@@ -4,11 +4,11 @@ OBJECTS := $(patsubst %.cc, %.o, $(SOURCES))
 
 LIB_DIR :=
 
-INCLUDE :=-I../vendor/headers/
+INCLUDE :=-I../../vendor/headers/ -I../
 
 DEPENDS := $(wildcard ./*.hh)
 
-include ../common.make
+include ../../common.make
 
 all:
 	$(IVY_MAKE) library
