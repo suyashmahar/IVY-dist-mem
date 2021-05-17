@@ -25,6 +25,15 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+using namespace libivy;
+
+using std::optional;
+using std::pair;
+using std::string;
+using std::variant;
+using std::vector;
+
+
 /** userfaultd doesn't have a libc wrapper, see USERFAULTD(2) */
 int userfaultfd(int flags) { return syscall(SYS_userfaultfd, flags); }
 
@@ -102,16 +111,16 @@ Ivy::res_t<std::monostate> Ivy::reg_fault_hdlr() {
 }
 
 void* Ivy::pg_fault_hdlr(void *args) {
-  auto ivy = *reinterpret_cast<Ivy*>(args);
+  auto *ivy = reinterpret_cast<Ivy*>(args);
 
-  DBGH << "Ca va? " << unwrap(ivy.ca_va()) << std::endl;
+  DBGH << "Ca va? " << unwrap(ivy->ca_va()) << std::endl;
   
   struct pollfd evt = {};
-  evt.fd = ivy.fd;
+  evt.fd = ivy->fd;
   evt.events = POLLIN;
 
   auto err = [&]() {
-    if (ivy.fd) close(ivy.fd);
+    if (ivy->fd) close(ivy->fd);
     DBGE << "Cannot continue, exiting with code 1..." << std::endl;
     exit(1);
   };
@@ -141,7 +150,7 @@ void* Ivy::pg_fault_hdlr(void *args) {
       err();
     }
     struct uffd_msg fault_msg = {0};
-    if (read(ivy.fd, &fault_msg, sizeof(fault_msg)) != sizeof(fault_msg)) {
+    if (read(ivy->fd, &fault_msg, sizeof(fault_msg)) != sizeof(fault_msg)) {
       perror("ioctl_userfaultfd read");
       DBGH << "++ read failed" << std::endl;
       err();
@@ -152,6 +161,15 @@ void* Ivy::pg_fault_hdlr(void *args) {
     if (fault_msg.event & UFFD_EVENT_PAGEFAULT) {
       DBGH << "Got page fault at " << (void*)(addr) << std::endl;
       /* TODO: handle the page here */
+
+      /* Check if this is a write fault */
+      if (fault_msg.arg.pagefault.flags & UFFD_PAGEFAULT_FLAG_WRITE) {
+	DBGH << "Write fault" << std::endl;
+	ivy->wr_fault_hdlr(addr);
+      } else {
+	DBGH << "Read fault" << std::endl;
+	ivy->rd_fault_hdlr(addr);
+      }
     }
   }
 }
@@ -169,17 +187,17 @@ Ivy::res_t<void_ptr> Ivy::create_mem_region(size_t bytes) {
 }
 
 Ivy::mres_t Ivy::set_access(void_ptr addr, size_t pg_cnt,
-			    Ivy::AccessType access) {
+			    IvyAccessType access) {
   int prot = PROT_EXEC;
 
   switch (access) {
-  case (Ivy::AccessType::RD):
+  case (IvyAccessType::RD):
     prot |= PROT_READ;
     break;
-  case (Ivy::AccessType::WR):
+  case (IvyAccessType::WR):
     prot |= PROT_WRITE;
     break;
-  case (Ivy::AccessType::RW):
+  case (IvyAccessType::RW):
     prot |= PROT_READ | PROT_WRITE;
     break;
   default:
@@ -195,11 +213,17 @@ Ivy::mres_t Ivy::set_access(void_ptr addr, size_t pg_cnt,
   return {};
 }
 
+bool Ivy::is_owner(void_ptr pg_addr) {
+  // TODO: Implement this
+  return true;
+}
+
 Ivy::mres_t Ivy::fetch_pg(void_ptr addr){
   throw std::runtime_error("Unimplemented");
 }
 
 Ivy::mres_t Ivy::serv_rd_rq(void_ptr pg_addr) {
+  
   throw std::runtime_error("Unimplemented");
 }
 
@@ -207,3 +231,57 @@ Ivy::mres_t Ivy::serv_wr_rq(void_ptr pg_addr) {
   throw std::runtime_error("Unimplemented");
 }
 
+Ivy::mres_t Ivy::rd_fault_hdlr(void_ptr addr) {
+  IVY_ASSERT(this->pg_tbl.has_value(), "Page table uninit");
+
+  uint64_t addr_val = reinterpret_cast<uint64_t>(addr);
+  
+  pg_tbl.value()->page_locks[addr_val].lock();
+  guard(pg_tbl.value()->page_locks[addr_val]);
+
+  if (unwrap(this->is_manager())) {
+    guard(this->pg_tbl.value()->info_locks[addr_val]);
+    
+    this->pg_tbl.value()->info[addr_val].copyset.insert(this->addr);
+    this->fetch_pg(addr);
+
+  } else {
+    this->req_manager(addr, IvyAccessType::RD);
+    this->fetch_pg(addr);
+    this->ack_manager(addr, IvyAccessType::RD);
+  }
+
+  this->pg_tbl.value()->info[addr_val].access = IvyAccessType::RD;
+
+  return {};
+}
+
+Ivy::mres_t Ivy::wr_fault_hdlr(void_ptr addr) {
+  IVY_ASSERT(this->pg_tbl.has_value(), "Page table uninit");
+
+  uint64_t addr_val = reinterpret_cast<uint64_t>(addr);
+
+  pg_tbl.value()->page_locks[addr_val].lock();
+  guard(pg_tbl.value()->page_locks[addr_val]);
+
+  if (unwrap(this->is_manager())) {
+    guard(this->pg_tbl.value()->info_locks[addr_val]);
+
+    vector<string> ivld_set;
+    std::copy(this->pg_tbl.value()->info[addr_val].copyset.begin(),
+	      this->pg_tbl.value()->info[addr_val].copyset.end(),
+	      std::back_inserter(ivld_set));
+    
+    this->invalidate(addr, ivld_set);
+
+    this->pg_tbl.value()->info[addr_val].copyset.clear();
+  } else {
+    this->req_manager(addr, IvyAccessType::WR);
+    this->fetch_pg(addr);
+    this->ack_manager(addr, IvyAccessType::WR);
+  }
+
+  this->pg_tbl.value()->info[addr_val].access = IvyAccessType::WR;
+  
+  return {};
+}

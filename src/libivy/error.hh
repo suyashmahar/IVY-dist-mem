@@ -16,6 +16,11 @@
     throw std::runtime_error(msg);		\
   } while (0)
 
+#define IVY_ASSERT(val, msg)			\
+  if (!(val)) {					\
+    throw std::runtime_error(msg);		\
+  } while (0)
+
 #define PSTR()					\
   std::string(strerror(errno))
 
