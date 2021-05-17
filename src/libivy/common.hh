@@ -9,9 +9,11 @@
 #ifndef IVY_HEADER_LIBIVY_COMMON_H__
 #define IVY_HEADER_LIBIVY_COMMON_H__
 
-#include <memory>
 #include <functional>
+#include <memory>
 #include <mutex>
+#include <optional>
+#include <string>
 
 // Do magic! Creates a unique name using the line number
 #define IVY_LINE_NAME( prefix ) IVY_JOIN( prefix, __LINE__ )
@@ -24,6 +26,17 @@
   IVY_LINE_NAME(ivy_macro_lock_guard)((mtx))
 
 namespace libivy {
+  using std::optional;
+  using std::pair;
+
+  using idx_t = uint64_t;
+  using err_t = std::string;
+
+  template <typename T>
+  using res_t = pair<T, optional<err_t>>;
+  using mres_t = optional<err_t>;
+  using bytes_t = uint64_t;
+
   enum IvyAccessType {
     RD = 0,
     WR = 1,

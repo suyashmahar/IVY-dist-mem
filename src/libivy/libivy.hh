@@ -31,19 +31,7 @@ namespace libivy {
   using std::vector;
   using std::unique_ptr;
 
-
   class Ivy {
-    /* Public types and aliases */
-  public:
-    using idx_t = uint64_t;
-    using err_t = std::string;
-
-    template <typename T>
-    using res_t = pair<T, optional<err_t>>;
-    using mres_t = optional<err_t>;
-
-    using bytes_t = uint64_t;
-
     /* Private variables */
   private:
     using json = nlohmann::json;
@@ -121,7 +109,7 @@ namespace libivy {
   };
 
   template <typename T>
-  static inline bool is_err(Ivy::res_t<T> val) {
+  static inline bool is_err(res_t<T> val) {
     if (val.index() == 1)
       return true;
   
@@ -129,7 +117,7 @@ namespace libivy {
   }
 
   template <typename T>
-  static inline T unwrap(Ivy::res_t<T> val) {
+  static inline T unwrap(res_t<T> val) {
     if (val.second.has_value())
       throw std::runtime_error("Unwrap on error");
     return val.first;

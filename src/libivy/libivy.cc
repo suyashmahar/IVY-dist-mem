@@ -64,10 +64,10 @@ Ivy::Ivy(std::string cfg_f, idx_t id) {
 
 Ivy::~Ivy() = default;
 
-Ivy::res_t<void_ptr> Ivy::get_shm() { return {nullptr, {}}; }
-Ivy::mres_t Ivy::drop_shm(void_ptr region) { return {}; }
+res_t<void_ptr> Ivy::get_shm() { return {nullptr, {}}; }
+mres_t Ivy::drop_shm(void_ptr region) { return {}; }
 
-Ivy::res_t<bool> Ivy::is_manager() {
+res_t<bool> Ivy::is_manager() {
   if (this->id == this->manager_id) {
     return {true, {}};
   } else {
@@ -75,9 +75,9 @@ Ivy::res_t<bool> Ivy::is_manager() {
   }
 }
 
-Ivy::res_t<bool> Ivy::ca_va() { return {true, {}}; }
+res_t<bool> Ivy::ca_va() { return {true, {}}; }
 
-Ivy::res_t<std::monostate> Ivy::reg_fault_hdlr() {
+res_t<std::monostate> Ivy::reg_fault_hdlr() {
   DBGH << "Registering handler" << std::endl;
 
   auto err = [](string msg) -> res_t<std::monostate> {
@@ -174,7 +174,7 @@ void* Ivy::pg_fault_hdlr(void *args) {
   }
 }
 
-Ivy::res_t<void_ptr> Ivy::create_mem_region(size_t bytes) {
+res_t<void_ptr> Ivy::create_mem_region(size_t bytes) {
   void_ptr addr = mmap(nullptr, bytes,
 		       PROT_EXEC | PROT_READ | PROT_READ,
 		       MAP_SHARED | MAP_ANONYMOUS, 0, 0);
@@ -186,7 +186,7 @@ Ivy::res_t<void_ptr> Ivy::create_mem_region(size_t bytes) {
   return {addr, {}};
 }
 
-Ivy::mres_t Ivy::set_access(void_ptr addr, size_t pg_cnt,
+mres_t Ivy::set_access(void_ptr addr, size_t pg_cnt,
 			    IvyAccessType access) {
   int prot = PROT_EXEC;
 
@@ -218,20 +218,20 @@ bool Ivy::is_owner(void_ptr pg_addr) {
   return true;
 }
 
-Ivy::mres_t Ivy::fetch_pg(void_ptr addr){
+mres_t Ivy::fetch_pg(void_ptr addr){
   throw std::runtime_error("Unimplemented");
 }
 
-Ivy::mres_t Ivy::serv_rd_rq(void_ptr pg_addr) {
+mres_t Ivy::serv_rd_rq(void_ptr pg_addr) {
   
   throw std::runtime_error("Unimplemented");
 }
 
-Ivy::mres_t Ivy::serv_wr_rq(void_ptr pg_addr) {
+mres_t Ivy::serv_wr_rq(void_ptr pg_addr) {
   throw std::runtime_error("Unimplemented");
 }
 
-Ivy::mres_t Ivy::rd_fault_hdlr(void_ptr addr) {
+mres_t Ivy::rd_fault_hdlr(void_ptr addr) {
   IVY_ASSERT(this->pg_tbl.has_value(), "Page table uninit");
 
   uint64_t addr_val = reinterpret_cast<uint64_t>(addr);
@@ -256,7 +256,7 @@ Ivy::mres_t Ivy::rd_fault_hdlr(void_ptr addr) {
   return {};
 }
 
-Ivy::mres_t Ivy::wr_fault_hdlr(void_ptr addr) {
+mres_t Ivy::wr_fault_hdlr(void_ptr addr) {
   IVY_ASSERT(this->pg_tbl.has_value(), "Page table uninit");
 
   uint64_t addr_val = reinterpret_cast<uint64_t>(addr);
