@@ -13,6 +13,8 @@
 #include <unistd.h>
 #include <vector>
 
+#include "libivy.hh"
+
 typedef uint8_t *byte_ptr;
 
 using std::optional;
@@ -54,11 +56,13 @@ void dump_shm() {
  * @param id Unique id of the worker
  */
 void sort_worker(size_t id) {
-  
   /* Busy waiting on ready */
   while (!shm.value()->header.ready) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
+
+  std::cout << "Ready value = " << (void*)(shm.value()->header.ready)
+	    << std::endl;
   
   size_t elems = shm.value()->header.elems;
   size_t elems_per_node = (elems/shm.value()->header.nodes);
@@ -122,31 +126,28 @@ void merge_worker() {
 
     next_iter(max_idx);    
   }
-  
 }
 
-int main(int argc, char *argv[]) {
-  std::string in_fname = "";
-
-  if (argc != 2) {
-    std::cout << "USAGE: " << argv[0] <<  " <path to input file>"
-	      << std::endl;
-    exit(1);
-  } else {
-    in_fname = std::string(argv[1]);
-    std::cout << "Reading file " << in_fname << std::endl;
-  }
-
+void setup_shm(Ivy &ivy, std::string in_fname) {
   std::fstream in_f(in_fname);
-
-  int in_num;
-  size_t in_iter = 0;
-  size_t elems;
+  size_t elems;  
   in_f >> elems;
 
   size_t region_sz = sizeof(uint64_t)*elems + sizeof(shm_hdr);
   shm = new(malloc(region_sz)) shm_layout;
 
+
+  std::memset(shm.value(), 0, region_sz);
+}
+
+void populate_shm(std::string in_fname) {
+  std::fstream in_f(in_fname);
+  
+  int in_num;
+  size_t in_iter = 0;
+  size_t elems;
+  
+  in_f >> elems;
   while (in_f >> in_num) {
     shm.value()->data[in_iter++] = in_num;
   }
@@ -154,7 +155,7 @@ int main(int argc, char *argv[]) {
   std::cout << "Read " << in_iter << " elems " << std::endl;
   
   shm.value()->header.elems = elems;
-  shm.value()->header.ready = false;
+  shm.value()->header.ready = 0;
 
   for (int i = 0; i < NODES; i++)
     shm.value()->header.done[i] = 0;
@@ -163,34 +164,71 @@ int main(int argc, char *argv[]) {
 
   dump_shm();
 
-  shm.value()->header.ready = true;
+  shm.value()->header.ready = 1;
+}
 
-  /* Create n parallel processes */
-  for (int i = 0; i < NODES; i++) {
-    std::thread t(sort_worker, i);
-    t.detach();
-  }
-
-  std::cout << "All children spawned" << std::endl;
-
+void wait_for_workers() {
   /* Wait for every worker to complete */
   bool all_done = false;
+  size_t seclap = 0;
+  
   while (!all_done) {
     /* Wait for 100ms before checking */
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     all_done = true;
 
     for (int i = 0; i < NODES; i++) {
       if (shm.value()->header.done[i] != 1) {
-	std::cout << "id " << i << " is not done yet" << std::endl;
 	/* At least one node is not ready yet, wait for it */
 	all_done = false;
 	break;
       }
     }
+
+    seclap += 1;
+    std::cout << seclap << " seconds elapsed waiting for workers" << std::endl;
+  }
+}
+
+int main(int argc, char *argv[]) {
+  std::string in_fname = "";
+  std::string cfg_fname = "";
+  uint64_t id = 0;
+  
+  if (argc != 4) {    
+    std::cout << "USAGE: " << argv[0]
+	      <<  " <path to input file> <path to config file> <id>"
+	      << std::endl;
+    exit(1);
+  } else {
+    in_fname = std::string(argv[1]);
+    cfg_fname = std::string(argv[2]);
+    id = std::strtoull(argv[3], NULL, 0);
   }
 
+  Ivy ivy(cfg_fname, id);
+
+  auto is_manager_res = ivy.is_manager();
+  auto is_manager = false;
+  
+  if (is_manager_res.second.has_value()) {
+    throw is_manager_res.second.value();
+  } else {
+    is_manager = is_manager_res.first;
+  }
+  
+  std::cout << "Is manager = " << is_manager << std::endl;
+
+  setup_shm(ivy, in_fname);
+    
+  if (is_manager) {
+    populate_shm(in_fname);
+    wait_for_workers();
+    merge_worker();
+  } else {
+    sort_worker(id);
+  }
+  
   std::cout << "All done" << std::endl;
-  merge_worker();
 }

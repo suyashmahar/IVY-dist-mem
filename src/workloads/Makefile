@@ -1,6 +1,6 @@
 .PHONY: pdot psort
 
-include ../common.make
+include ../../common.make
 
 all: psort pdot
 

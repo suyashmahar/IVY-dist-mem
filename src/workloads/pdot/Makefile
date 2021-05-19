@@ -1,7 +1,9 @@
 CXXFLAGS := -std=c++20
-LINKFLAGS := -pthread
+EXTRA_LINKFLAGS := -pthread
 
-include ../../common.make
+include ../../../common.make
 
 pdot: pdot.o
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(LINKFLAGS)
+
+clean: default_clean_instance
