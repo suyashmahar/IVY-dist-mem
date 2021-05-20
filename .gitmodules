@@ -1,0 +1,3 @@
+[submodule "vendor/rpclib"]
+	path = vendor/rpclib
+	url = git@github.com:rpclib/rpclib.git
