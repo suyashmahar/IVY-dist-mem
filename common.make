@@ -2,8 +2,8 @@ SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 
 include $(SELF_DIR)colors.make
 
-CXXFLAGS    :=-std=gnu++20 -ggdb3 -O0 -fPIC -Wall
-CXXFLAGS    +=-fno-omit-frame-pointer
+CXXFLAGS    :=-std=gnu++20 -ggdb3 -O0 -Wall
+CXXFLAGS    +=-fno-omit-frame-pointer -fPIC
 CXXFLAGS    +=$(EXTRA_CXXFLAGS) #-fsanitize=address -fsanitize=leak
 CXXFLAGS    +=$(FLUSH_INST_FLAG)
 LDFLAGS     :=$(EXTRA_LDFLAGS)

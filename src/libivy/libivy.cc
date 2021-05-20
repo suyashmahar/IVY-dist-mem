@@ -285,3 +285,9 @@ mres_t Ivy::wr_fault_hdlr(void_ptr addr) {
   
   return {};
 }
+
+mres_t Ivy::req_manager(void_ptr addr, IvyAccessType access) { return {}; };
+mres_t Ivy::ack_manager(void_ptr addr, IvyAccessType access) { return {}; };
+mres_t Ivy::invalidate(void_ptr addr, vector<string> nodes) { return {}; };
+
+

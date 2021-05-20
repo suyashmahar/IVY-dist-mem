@@ -17,6 +17,7 @@
 
 typedef uint8_t *byte_ptr;
 
+using libivy::Ivy;
 using std::optional;
 using std::span;
 using std::vector;

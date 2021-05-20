@@ -1,10 +1,14 @@
+RPCLIB_INCLUDE := ../../vendor/rpclib/include
+RPCLIB_DIR := ../../vendor/rpclib/build
+
 SOURCES := $(wildcard *.cc)
-
 OBJECTS := $(patsubst %.cc, %.o, $(SOURCES))
-
-LIB_DIR :=
-
-INCLUDE :=-I../../vendor/headers/ -I../
+INCLUDE :=-I../../vendor/headers/ -I../$(RPCLIB_INCLUDE)
+EXTRA_LDFLAGS :=-L$(RPCLIB_DIR)
+EXTRA_LINKFLAGS :=  -Wl,--whole-archive \
+			-lrpc \
+			-Wl,--no-whole-archive
+EXTRA_CXXFLAGS := #-fPIC
 
 DEPENDS := $(wildcard ./*.hh)
 
