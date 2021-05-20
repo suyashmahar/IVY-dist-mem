@@ -34,20 +34,21 @@ namespace libivy {
     uint16_t port;
 
     unique_ptr<rpc::server> server;
-    unique_ptr<rpc::client> client;
+    vector<unique_ptr<rpc::client>> clients;
     
     vector<pair<string, rpc_recv_f>> recv_funcs;
-    vector<pair<string, rpc_send_f>> send_funcs;
+
+    vector<string> nodes;
+    size_t myId;
 
     mres_t start_recv();
     mres_t start_send();    
   public:
-    RpcServer(string addr);
+    RpcServer(vector<string> nodes, size_t myId);
     
     void register_recv_funcs(vector<pair<string, rpc_recv_f>>);
-    void register_send_funcs(vector<pair<string, rpc_recv_f>>);
 
-    res_t<string> call(string name, string buf);
+    res_t<string> call(size_t nodeId, string name, string buf);
 
     mres_t start_serving(string addr);
   };

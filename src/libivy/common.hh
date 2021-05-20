@@ -9,11 +9,13 @@
 #ifndef IVY_HEADER_LIBIVY_COMMON_H__
 #define IVY_HEADER_LIBIVY_COMMON_H__
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <iostream>
 
 // Do magic! Creates a unique name using the line number
 #define IVY_LINE_NAME( prefix ) IVY_JOIN( prefix, __LINE__ )
@@ -25,7 +27,14 @@
   std::lock_guard<std::mutex>						\
   IVY_LINE_NAME(ivy_macro_lock_guard)((mtx))
 
+static inline constexpr size_t pg_align(size_t bytes) {
+  size_t result = (bytes/4096)*4096;
+
+  return result;
+}
+
 namespace libivy {
+  using namespace std::chrono_literals;
   using std::optional;
   using std::pair;
 

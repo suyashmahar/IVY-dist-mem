@@ -62,7 +62,7 @@ void sort_worker(size_t id) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 
-  std::cout << "Ready value = " << (void*)(shm.value()->header.ready)
+  std::cout << "Ready value = " << (int)(shm.value()->header.ready)
 	    << std::endl;
   
   size_t elems = shm.value()->header.elems;
@@ -87,7 +87,7 @@ void sort_worker(size_t id) {
 void merge_worker() {
   size_t iter[NODES];
 
-  for (int i = 0; i < NODES; i++) {
+  for (size_t i = 0; i < NODES; i++) {
     iter[i] = 0;
   }
 
@@ -98,7 +98,7 @@ void merge_worker() {
   };
 
   auto done = [&iter]() -> bool {
-    for (int i = 0; i < NODES; i++) {
+    for (size_t i = 0; i < NODES; i++) {
       if (iter[i] != shm.value()->header.elems/NODES){
 	return false;
       }
@@ -112,7 +112,7 @@ void merge_worker() {
 
     uint64_t max_elem = 0;
     uint64_t max_idx;
-    for (int i = 0; i < NODES; i++) {
+    for (size_t i = 0; i < NODES; i++) {
       if (iter[i] != shm.value()->header.elems/NODES) {
 	// std::cout << "offset = " << i*ELEMS + iter[i] << std::endl;
 	 auto elem = shm.value()->data[i*shm.value()->header.elems/NODES + iter[i]];
@@ -135,10 +135,17 @@ void setup_shm(Ivy &ivy, std::string in_fname) {
   in_f >> elems;
 
   size_t region_sz = sizeof(uint64_t)*elems + sizeof(shm_hdr);
-  shm = new(malloc(region_sz)) shm_layout;
+  auto [shm, err] = ivy.get_shm();
 
+  if (err.has_value()) {
+    throw std::runtime_error("get_shm(): " + err.value());
+  }
 
-  std::memset(shm.value(), 0, region_sz);
+  DBGH << "Memsetting range " << shm << " + "
+       << region_sz << std::endl;
+
+  // DBGH << "First value = " << ((uint64_t*)shm)[0] << std::endl;
+  std::memset(shm, 0, region_sz);
 }
 
 void populate_shm(std::string in_fname) {
@@ -158,7 +165,7 @@ void populate_shm(std::string in_fname) {
   shm.value()->header.elems = elems;
   shm.value()->header.ready = 0;
 
-  for (int i = 0; i < NODES; i++)
+  for (size_t i = 0; i < NODES; i++)
     shm.value()->header.done[i] = 0;
 
   shm.value()->header.nodes = NODES;
@@ -179,7 +186,7 @@ void wait_for_workers() {
 
     all_done = true;
 
-    for (int i = 0; i < NODES; i++) {
+    for (size_t i = 0; i < NODES; i++) {
       if (shm.value()->header.done[i] != 1) {
 	/* At least one node is not ready yet, wait for it */
 	all_done = false;

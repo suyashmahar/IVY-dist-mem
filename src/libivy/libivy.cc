@@ -50,6 +50,10 @@ Ivy::Ivy(std::string cfg_f, idx_t id) {
   try {
     this->nodes = this->cfg[NODES_KEY].get<vector<string>>();
     this->manager_id = this->cfg[MANAGER_ID_KEY].get<uint64_t>();
+    this->region_sz = this->cfg[REGION_SZ_KEY].get<uint64_t>();
+    DBGH << "Original region sz = " << this->region_sz << std::endl;    
+    this->region_sz = pg_align(this->region_sz);
+    DBGH << "New region sz = " << this->region_sz << std::endl;
   } catch (nlohmann::json::exception &e) {
     IVY_ERROR("Config file has wrong format.");
   }
@@ -60,11 +64,35 @@ Ivy::Ivy(std::string cfg_f, idx_t id) {
 
   this->id = id;
   this->addr = this->nodes[id];
+  this->rpcserver
+    = std::make_unique<RpcServer>(this->nodes, this->id);
+  
+  auto err = this->reg_fault_hdlr();
+
+  if (err.has_value()) {
+    IVY_ERROR(PSTR());
+  }
 }
 
 Ivy::~Ivy() = default;
 
-res_t<void_ptr> Ivy::get_shm() { return {nullptr, {}}; }
+res_t<void_ptr> Ivy::get_shm() {
+  void_ptr result = mmap(NULL, this->region_sz, PROT_READ | PROT_WRITE,
+			 MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
+
+  if (result == MAP_FAILED) {
+    return {nullptr, {"MAP_FAILED: " + PSTR()}};
+  }
+
+  DBGH << "Registering range from " << result << " + "
+       << this->region_sz << std::endl;
+  auto err = this->reg_addr_range(result, this->region_sz);
+  if (err.has_value()) {
+    DBGH << "reg_addr_range failed" << std::endl;
+  }
+  return {result, err};
+}
+
 mres_t Ivy::drop_shm(void_ptr region) { return {}; }
 
 res_t<bool> Ivy::is_manager() {
@@ -77,43 +105,44 @@ res_t<bool> Ivy::is_manager() {
 
 res_t<bool> Ivy::ca_va() { return {true, {}}; }
 
-res_t<std::monostate> Ivy::reg_fault_hdlr() {
+mres_t Ivy::reg_fault_hdlr() {
   DBGH << "Registering handler" << std::endl;
 
-  auto err = [](string msg) -> res_t<std::monostate> {
-    return {{}, msg};
-  };
-    
   /* Open a userfaultd filedescriptor */
-  if ((fd = userfaultfd(O_NONBLOCK)) == -1) {
-    return err("userfaultfd failed");
+  if ((this->fd = userfaultfd(O_NONBLOCK)) == -1) {
+    return {"userfaultfd failed"};
   }
 
   /* Check if the kernel supports the read/POLLIN protocol */
   struct uffdio_api uapi = {};
   uapi.api = UFFD_API;
   if (ioctl(fd, UFFDIO_API, &uapi)) {
-    return err("ioctl(fd, UFFDIO_API, ...) failed");
+    return {"ioctl(fd, UFFDIO_API, ...) failed"};
   }
 
   if (uapi.api != UFFD_API) {
-    return err("unexepcted UFFD api version");
+    return {"unexepcted UFFD api version"};
   }
 
   /* Start a fault monitoring thread */
   /* start a thread that will fault... */
   pthread_t thread = {0};
+  this->fault_hdlr_live.lock();
   if (pthread_create(&thread, NULL, this->pg_fault_hdlr, this)) {
-    return err("pthread_create failed");
+    return {"pthread_create failed"};
   }
+
+  /* Wait for fault handlers to go live */
+  this->fault_hdlr_live.lock();
 
   return {};
 }
 
 void* Ivy::pg_fault_hdlr(void *args) {
   auto *ivy = reinterpret_cast<Ivy*>(args);
-
-  DBGH << "Ca va? " << unwrap(ivy->ca_va()) << std::endl;
+  
+  /* Signal libivy to continue */
+  ivy->fault_hdlr_live.unlock();
   
   struct pollfd evt = {};
   evt.fd = ivy->fd;
@@ -127,7 +156,9 @@ void* Ivy::pg_fault_hdlr(void *args) {
 
   while (1) {
     int pollval = poll(&evt, 1, 10);
-      
+
+    DBGH << "Got an event" << std::endl;
+    
     switch (pollval) {
     case -1:
       perror("poll/userfaultfd");
@@ -170,6 +201,7 @@ void* Ivy::pg_fault_hdlr(void *args) {
 	DBGH << "Read fault" << std::endl;
 	ivy->rd_fault_hdlr(addr);
       }
+      std::this_thread::sleep_for(1000ms);
     }
   }
 }
@@ -285,6 +317,41 @@ mres_t Ivy::wr_fault_hdlr(void_ptr addr) {
   
   return {};
 }
+
+mres_t Ivy::reg_addr_range(void *start, size_t bytes) {
+  IVY_ASSERT(this->fd != 0, "fd not initialized");
+
+  DBGH << "userfaultd's fd = " << fd << std::endl;
+  
+  struct uffdio_register reg = {};
+  
+  reg.mode        = UFFDIO_REGISTER_MODE_MISSING;
+  reg.range       = {};
+  reg.range.start = (long) start;
+  reg.range.len   = bytes;
+
+  int ioctl_ret;
+  if ((ioctl_ret = ioctl(fd, UFFDIO_REGISTER,  &reg))) {
+    switch (ioctl_ret) {
+    case EBUSY:
+      DBGH << "EBUSY" << std::endl;
+      break;
+    case EFAULT:
+      DBGH << "EFAULT" << std::endl;
+      break;
+    case EINVAL:
+      DBGH << "EINVAL" << std::endl;
+      break;
+    }
+    
+    return {"ioctl(fd, UFFDIO_REGISTER,  &reg): " + PSTR()};
+  }
+  if (reg.ioctls != UFFD_API_RANGE_IOCTLS) {
+    return {"UFFD_API_RANGE_IOCTLS: " + PSTR()};
+  }
+  
+  return {};
+} 
 
 mres_t Ivy::req_manager(void_ptr addr, IvyAccessType access) { return {}; };
 mres_t Ivy::ack_manager(void_ptr addr, IvyAccessType access) { return {}; };

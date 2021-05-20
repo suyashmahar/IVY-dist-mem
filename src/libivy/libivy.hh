@@ -15,21 +15,25 @@
 #include <string>
 #include <variant>
 #include <vector>
+#include <mutex>
 
 #include "common.hh"
 #include "../common.hh"
 #include "ivypagetbl.hh"
 #include "json.hpp"
+#include "rpcserver.hh"
 
 using void_ptr = void *;
 
 namespace libivy {   
+  using libivy::RpcServer;
   using std::optional;
   using std::pair;
   using std::string;
   using std::variant;
   using std::vector;
   using std::unique_ptr;
+  using std::mutex;
 
   class Ivy {
     /* Private variables */
@@ -39,14 +43,18 @@ namespace libivy {
     idx_t id;
     string addr;
     json cfg;
+    std::unique_ptr<RpcServer> rpcserver;
   
     vector<string> nodes;
     uint64_t manager_id;
+    size_t region_sz; // bytes
+    mutex fault_hdlr_live;
 
     void_ptr mem;
 
     string NODES_KEY = "nodes";
     string MANAGER_ID_KEY = "manager_id";
+    string REGION_SZ_KEY = "region_sz";
 
     int fd;
 
@@ -68,10 +76,13 @@ namespace libivy {
     /* Private methods */
   private:
     /** @brief Registers fault handler for this->mem */
-    res_t<std::monostate> reg_fault_hdlr();
+    mres_t reg_fault_hdlr();
 
     /** @brief Handles the page faults for the memory region */
     static void_ptr pg_fault_hdlr(void *args);
+
+    /** @brief Register a range of address with pg fault hdlr */
+    mres_t reg_addr_range(void *start, size_t bytes);
   
     /** @brief Handles the page faults for the memory region */
     mres_t rd_fault_hdlr(void_ptr addr);

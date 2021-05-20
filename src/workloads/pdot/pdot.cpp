@@ -85,7 +85,7 @@ void mult_worker(size_t id) {
 
   /* Use multiply the values */
   uint64_t sum = 0;
-  for (int i = 0; i < elems_per_node; i++) {
+  for (size_t i = 0; i < elems_per_node; i++) {
     sum += vecA[i] * vecB[i];
   }
 
@@ -100,7 +100,7 @@ void mult_worker(size_t id) {
 uint64_t merge_worker() {
   uint64_t result = 0;
 
-  for (int i = 0; i < NODES; i++) {
+  for (size_t i = 0; i < NODES; i++) {
     std::cout << "Worker " << i << "'s result = " << shm.value()->header.result[i] << std::endl;
     result += shm.value()->header.result[i];
   }
@@ -139,7 +139,7 @@ int main(int argc, char *argv[]) {
   shm.value()->header.elems = elems;
   shm.value()->header.ready = false;
 
-  for (int i = 0; i < NODES; i++)
+  for (size_t i = 0; i < NODES; i++)
     shm.value()->header.done[i] = 0;
 
   shm.value()->header.nodes = NODES;
@@ -150,7 +150,7 @@ int main(int argc, char *argv[]) {
   shm.value()->header.ready = true;
 
   /* Create n parallel processes */
-  for (int i = 0; i < NODES; i++) {
+  for (size_t i = 0; i < NODES; i++) {
     std::thread t(mult_worker, i);
     t.detach();
   }
@@ -165,7 +165,7 @@ int main(int argc, char *argv[]) {
 
     all_done = true;
 
-    for (int i = 0; i < NODES; i++) {
+    for (size_t i = 0; i < NODES; i++) {
       if (shm.value()->header.done[i] != 1) {
 	std::cout << "id " << i << " is not done yet" << std::endl;
 	/* At least one node is not ready yet, wait for it */
