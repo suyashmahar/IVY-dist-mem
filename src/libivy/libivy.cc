@@ -72,6 +72,8 @@ Ivy::Ivy(std::string cfg_f, idx_t id) {
   if (err.has_value()) {
     IVY_ERROR(PSTR());
   }
+
+  this->rpcserver->start_serving();
 }
 
 Ivy::~Ivy() = default;
@@ -157,8 +159,6 @@ void* Ivy::pg_fault_hdlr(void *args) {
   while (1) {
     int pollval = poll(&evt, 1, 10);
 
-    DBGH << "Got an event" << std::endl;
-    
     switch (pollval) {
     case -1:
       perror("poll/userfaultfd");
@@ -186,6 +186,8 @@ void* Ivy::pg_fault_hdlr(void *args) {
       DBGH << "++ read failed" << std::endl;
       err();
     }
+
+    ivy->rpcserver->call(1, "ping", "");
     
     char *addr = (char *)fault_msg.arg.pagefault.address;
 

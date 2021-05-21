@@ -11,6 +11,7 @@
 #include "rpcserver.hh"
 
 #include <future>
+#include <thread>
 
 using namespace libivy;
 
@@ -40,6 +41,10 @@ pair<string, size_t> parse_addr(string addr) {
   return {hostname_str, port_num};
 }
 
+string ping(string buf) {
+  return "pong";
+}
+
 RpcServer::RpcServer(vector<string> nodes, size_t myId)
   : nodes(nodes), myId(myId) {
   
@@ -62,7 +67,7 @@ RpcServer::RpcServer(vector<string> nodes, size_t myId)
   if (port_str.empty())
     IVY_ERROR("Unable to parse port");
 
-  uint64_t port_num = std::stoul(port_str.c_str(), nullptr, 16);
+  uint64_t port_num = std::stoul(port_str.c_str(), nullptr, 10);
   if (port_num < 1 || port_num > 65536) {
     IVY_ERROR("Invalid port number " + port_str);
   }
@@ -80,35 +85,48 @@ RpcServer::RpcServer(vector<string> nodes, size_t myId)
 	
     client_iter++;
   }
-
-  auto ping_func = [] (string buf) { return "pong";};
-  this->recv_funcs.push_back(std::make_pair("ping", ping_func));
+  
+  this->recv_funcs.push_back(std::make_pair("ping", ping));
 }
 
 mres_t RpcServer::start_recv() {
-  for (auto func : recv_funcs) {
-    this->server->bind(func.first, func.second);
+  DBGH << "Starting RPC server for " << this->hostname
+       << ":" << this->port << std::endl;
+  
+  for (size_t i = 0; i < recv_funcs.size(); i++) {
+    this->server->bind(recv_funcs[i].first, recv_funcs[i].second);
   }
+
+  // this->server->bind("ping", [](string arg) -> string {return "pong";});
 
   this->server->run();
   
   return {};
 }
 
-mres_t RpcServer::start_serving(string addr) {
-  std::async(std::launch::async, [&]() {this->start_recv();});
+mres_t RpcServer::start_serving() {
+  DBGH << "Starting RPC server thread asynchronously" << std::endl;
+
+  auto bg_fun = [&] () { this->start_recv(); };
+  std::thread(bg_fun).detach();
 
   return {};
 }
 
 res_t<string> RpcServer::call(size_t nodeId, string name, string buf) {
   DBGH << "Calling function " << name << " on node " << nodeId
-       << " with buffer " << buf << std::endl;
-  res_t<string> result
-    = {this->clients[nodeId]->call(name, buf).as<string>(), {}};
+       << " with buffer " << buf << " addr = " << this->nodes[nodeId]
+       << std::endl;
+
+  auto msg = this->clients[nodeId]->call("ping", "asd");
+  DBGH << "Message = " << msg.get() << std::endl;
+  auto result = msg.as<string>();
+
+  DBGH << "result = " << result << std::endl;
+  
+  res_t<string> ret_val = {result, {}};
 
   DBGH << "Call complete" << std::endl;
-  std::flush(std::cerr);
-  std::flush(std::cout);
-  return result;
+
+  return ret_val;
 }

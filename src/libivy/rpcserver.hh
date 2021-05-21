@@ -25,7 +25,7 @@ namespace libivy {
   using std::vector;
   using std::unique_ptr;
 
-  using rpc_recv_f = std::function<void(string)>;
+  using rpc_recv_f = std::function<string(string)>;
   using rpc_send_f = std::function<mres_t(string)>;
   
   class RpcServer {
@@ -50,7 +50,7 @@ namespace libivy {
 
     res_t<string> call(size_t nodeId, string name, string buf);
 
-    mres_t start_serving(string addr);
+    mres_t start_serving();
   };
 }
 
