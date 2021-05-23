@@ -146,6 +146,10 @@ void setup_shm(Ivy &ivy, std::string in_fname) {
 
   // DBGH << "First value = " << ((uint64_t*)shm)[0] << std::endl;
   std::memset(shm, 0, region_sz);
+
+  ivy.request_lock(shm, 4096);
+
+  std::memset(shm, 0, region_sz);
 }
 
 void populate_shm(std::string in_fname) {

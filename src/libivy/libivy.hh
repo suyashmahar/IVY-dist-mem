@@ -48,6 +48,7 @@ namespace libivy {
     vector<string> nodes;
     uint64_t manager_id;
     size_t region_sz; // bytes
+    void_ptr region;
     mutex fault_hdlr_live;
 
     void_ptr mem;
@@ -72,7 +73,8 @@ namespace libivy {
     res_t<bool> is_manager();
 
     res_t<bool> ca_va();
-
+    void lock_all();
+    void request_lock(void_ptr addr, size_t bytes);
     /* Private methods */
   private:
     /** @brief Registers fault handler for this->mem */
@@ -117,6 +119,7 @@ namespace libivy {
 
     /** @brief Invalidates the page on every node (runs on manager) */
     mres_t invalidate(void_ptr addr, vector<string> nodes);
+
   };
 
   template <typename T>

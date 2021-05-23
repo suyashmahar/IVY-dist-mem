@@ -10,6 +10,7 @@
 #include "error.hh"
 #include "libivy.hh"
 
+#include <csignal>
 #include <filesystem>
 #include <fstream>
 
@@ -92,6 +93,9 @@ res_t<void_ptr> Ivy::get_shm() {
   if (err.has_value()) {
     DBGH << "reg_addr_range failed" << std::endl;
   }
+
+  this->region = result;
+  
   return {result, err};
 }
 
@@ -107,35 +111,21 @@ res_t<bool> Ivy::is_manager() {
 
 res_t<bool> Ivy::ca_va() { return {true, {}}; }
 
+void sigaction_fun(int sig, siginfo_t *info, void * uctx) {
+  DBGH << "Signal = " << sig << std::endl;
+}
+
 mres_t Ivy::reg_fault_hdlr() {
-  DBGH << "Registering handler" << std::endl;
+  struct sigaction act {};
 
-  /* Open a userfaultd filedescriptor */
-  if ((this->fd = userfaultfd(O_NONBLOCK)) == -1) {
-    return {"userfaultfd failed"};
+  act.sa_sigaction = &sigaction_fun;
+  sigfillset(&act.sa_mask);
+  act.sa_flags = SA_RESTART;
+  
+  if (sigaction(SIGSEGV, &act, NULL) == -1) {
+    DBGH << "sigaction failed: " << PSTR() << std::endl;
+    exit(1);
   }
-
-  /* Check if the kernel supports the read/POLLIN protocol */
-  struct uffdio_api uapi = {};
-  uapi.api = UFFD_API;
-  if (ioctl(fd, UFFDIO_API, &uapi)) {
-    return {"ioctl(fd, UFFDIO_API, ...) failed"};
-  }
-
-  if (uapi.api != UFFD_API) {
-    return {"unexepcted UFFD api version"};
-  }
-
-  /* Start a fault monitoring thread */
-  /* start a thread that will fault... */
-  pthread_t thread = {0};
-  this->fault_hdlr_live.lock();
-  if (pthread_create(&thread, NULL, this->pg_fault_hdlr, this)) {
-    return {"pthread_create failed"};
-  }
-
-  /* Wait for fault handlers to go live */
-  this->fault_hdlr_live.lock();
 
   return {};
 }
@@ -202,6 +192,18 @@ void* Ivy::pg_fault_hdlr(void *args) {
       } else {
 	DBGH << "Read fault" << std::endl;
 	ivy->rd_fault_hdlr(addr);
+      }      
+
+      struct uffdio_range range = {};
+      range.start = (uint64_t)addr;
+      range.len = 4096;
+
+      struct uffdio_zeropage zero_pg = {};
+      zero_pg.range = range;
+
+      if (ioctl(ivy->fd, UFFDIO_ZEROPAGE, &zero_pg) == -1) {
+	perror("ioctl/wake");
+	exit(1);
       }
       std::this_thread::sleep_for(1000ms);
     }
@@ -291,6 +293,7 @@ mres_t Ivy::rd_fault_hdlr(void_ptr addr) {
 }
 
 mres_t Ivy::wr_fault_hdlr(void_ptr addr) {
+  return {};
   IVY_ASSERT(this->pg_tbl.has_value(), "Page table uninit");
 
   uint64_t addr_val = reinterpret_cast<uint64_t>(addr);
@@ -323,35 +326,9 @@ mres_t Ivy::wr_fault_hdlr(void_ptr addr) {
 mres_t Ivy::reg_addr_range(void *start, size_t bytes) {
   IVY_ASSERT(this->fd != 0, "fd not initialized");
 
-  DBGH << "userfaultd's fd = " << fd << std::endl;
-  
-  struct uffdio_register reg = {};
-  
-  reg.mode        = UFFDIO_REGISTER_MODE_MISSING;
-  reg.range       = {};
-  reg.range.start = (long) start;
-  reg.range.len   = bytes;
-
-  int ioctl_ret;
-  if ((ioctl_ret = ioctl(fd, UFFDIO_REGISTER,  &reg))) {
-    switch (ioctl_ret) {
-    case EBUSY:
-      DBGH << "EBUSY" << std::endl;
-      break;
-    case EFAULT:
-      DBGH << "EFAULT" << std::endl;
-      break;
-    case EINVAL:
-      DBGH << "EINVAL" << std::endl;
-      break;
-    }
-    
-    return {"ioctl(fd, UFFDIO_REGISTER,  &reg): " + PSTR()};
+  if (-1 == mprotect(start, bytes, PROT_NONE)) {
+    return {PSTR()};
   }
-  if (reg.ioctls != UFFD_API_RANGE_IOCTLS) {
-    return {"UFFD_API_RANGE_IOCTLS: " + PSTR()};
-  }
-  
   return {};
 } 
 
@@ -359,4 +336,23 @@ mres_t Ivy::req_manager(void_ptr addr, IvyAccessType access) { return {}; };
 mres_t Ivy::ack_manager(void_ptr addr, IvyAccessType access) { return {}; };
 mres_t Ivy::invalidate(void_ptr addr, vector<string> nodes) { return {}; };
 
+void Ivy::request_lock(void_ptr addr, size_t bytes) {
+  DBGH << "Locking range " << addr << " + "
+       << bytes << std::endl;
+  
+  int mu_res = munmap(addr, bytes);
+  if (mu_res == -1) {
+    IVY_PERROR("munmap failed");
+  }
+  
+  void_ptr result = mmap(addr, bytes, PROT_READ | PROT_WRITE,
+			 MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
 
+  if (result == MAP_FAILED) {
+    IVY_ERROR("mmap failed");
+  }
+
+  this->reg_addr_range(addr, bytes);
+
+  DBGH << "locking done" << std::endl;
+}
