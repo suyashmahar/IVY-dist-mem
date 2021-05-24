@@ -7,6 +7,8 @@ Using IVY's fixed ownership model.
 3. [workloads](src/workloads/): Parallel workloads written in C++
 
 ## API
+**Note:** libivy only supports C++20
+
 ```cpp
 
 // Create an object of the class `IVY` with the config file and node ID
