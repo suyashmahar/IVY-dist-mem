@@ -13,6 +13,7 @@
 #include <csignal>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 
 #include <fcntl.h>
 #include <poll.h>
@@ -34,11 +35,14 @@ using std::string;
 using std::variant;
 using std::vector;
 
-
-/** userfaultd doesn't have a libc wrapper, see USERFAULTD(2) */
-int userfaultfd(int flags) { return syscall(SYS_userfaultfd, flags); }
+static Ivy* ivy_static_obj = nullptr;
 
 Ivy::Ivy(std::string cfg_f, idx_t id) {
+  if (ivy_static_obj != nullptr){
+    IVY_ERROR("An ivy object already exists");
+  }
+  ivy_static_obj = this;
+  
   if (!std::filesystem::exists(cfg_f)) {
     IVY_ERROR("Config file not found.");
   }
@@ -52,8 +56,10 @@ Ivy::Ivy(std::string cfg_f, idx_t id) {
     this->nodes = this->cfg[NODES_KEY].get<vector<string>>();
     this->manager_id = this->cfg[MANAGER_ID_KEY].get<uint64_t>();
     this->region_sz = this->cfg[REGION_SZ_KEY].get<uint64_t>();
+    
     DBGH << "Original region sz = " << this->region_sz << std::endl;    
     this->region_sz = pg_align(this->region_sz);
+
     DBGH << "New region sz = " << this->region_sz << std::endl;
   } catch (nlohmann::json::exception &e) {
     IVY_ERROR("Config file has wrong format.");
@@ -111,16 +117,70 @@ res_t<bool> Ivy::is_manager() {
 
 res_t<bool> Ivy::ca_va() { return {true, {}}; }
 
-void sigaction_fun(int sig, siginfo_t *info, void * uctx) {
-  DBGH << "Signal = " << sig << std::endl;
+IvyAccessType Ivy::read_mem_perm(void_ptr addr) {
+  std::ifstream maps_f("/proc/" + std::to_string(getpid()) + "/maps");
+
+  std::string line;
+  while (std::getline(maps_f, line)) {
+    std::stringstream token_stream(line);
+    std::vector<std::string> tokens;
+    
+    std::string token;
+    while (std::getline(token_stream, token, ' ')) {
+      tokens.push_back(token);
+    }
+
+    if (tokens.size() > 2) {
+      size_t hyp_pos = tokens[0].find("-");
+      std::string start_str = tokens[0].substr(0, hyp_pos);
+      std::string end_str = tokens[0].substr(hyp_pos+1, tokens[0].size()-1);
+
+      auto start
+	= reinterpret_cast<void_ptr>(std::stoul(start_str, nullptr, 16));
+      auto end
+	= reinterpret_cast<void_ptr>(std::stoul(end_str, nullptr, 16));
+      
+      std::string perm = tokens[1];
+
+      if (addr >= start || addr < end) {
+	if (perm[0] == 'r' && perm[1] == 'w')
+	  return IvyAccessType::RW;
+	else if (perm[0] == 'r')
+	  return IvyAccessType::RD;
+	else if (perm[1] == 'w')
+	  return IvyAccessType::WR;
+      }
+    }
+  }
+}
+
+void Ivy::sigaction_hdlr(int sig, siginfo_t *info, void *ctx_ptr) {
+  auto uctx = reinterpret_cast<ucontext_t*>(ctx_ptr);
+  
+  DBGH << "Signal = " << (int)sig << std::endl;
+  DBGH << "Signal = " << info->si_signo << std::endl;
+  DBGH << "PID    = " << info->si_pid << std::endl;
+  DBGH << "addr   = " << info->si_addr << std::endl;
+
+  if (ivy_static_obj != nullptr) {
+    auto perm = ivy_static_obj->read_mem_perm(info->si_addr);
+    DBGH << "Page permission = " << perm << std::endl;
+    if (uctx->uc_mcontext.gregs[REG_ERR] & 0x2) {
+      DBGH << "Write fault" << std::endl;
+      ivy_static_obj->wr_fault_hdlr(nullptr);
+    } else {
+      DBGH << "Write fault" << std::endl;
+      ivy_static_obj->rd_fault_hdlr(nullptr);
+    }
+  }
 }
 
 mres_t Ivy::reg_fault_hdlr() {
   struct sigaction act {};
 
-  act.sa_sigaction = &sigaction_fun;
+  act.sa_sigaction = &Ivy::sigaction_hdlr;
   sigfillset(&act.sa_mask);
-  act.sa_flags = SA_RESTART;
+  act.sa_flags = SA_RESTART | SA_SIGINFO;
   
   if (sigaction(SIGSEGV, &act, NULL) == -1) {
     DBGH << "sigaction failed: " << PSTR() << std::endl;
@@ -128,86 +188,6 @@ mres_t Ivy::reg_fault_hdlr() {
   }
 
   return {};
-}
-
-void* Ivy::pg_fault_hdlr(void *args) {
-  auto *ivy = reinterpret_cast<Ivy*>(args);
-  
-  /* Signal libivy to continue */
-  ivy->fault_hdlr_live.unlock();
-  
-  struct pollfd evt = {};
-  evt.fd = ivy->fd;
-  evt.events = POLLIN;
-
-  auto err = [&]() {
-    if (ivy->fd) close(ivy->fd);
-    DBGE << "Cannot continue, exiting with code 1..." << std::endl;
-    exit(1);
-  };
-
-  while (1) {
-    int pollval = poll(&evt, 1, 10);
-
-    switch (pollval) {
-    case -1:
-      perror("poll/userfaultfd");
-      continue;
-    case 0:
-      continue;
-    case 1:
-      break;
-    default:
-      DBGH << "unexpected poll result" << std::endl;
-      exit(1);
-    }
-      
-    /* unexpected poll events */
-    if (evt.revents & POLLERR) {
-      DBGH << "++ POLLERR" << std::endl;
-      err();
-    } else if (evt.revents & POLLHUP) {
-      DBGH << "++ POLLHUP" << std::endl;
-      err();
-    }
-    struct uffd_msg fault_msg = {0};
-    if (read(ivy->fd, &fault_msg, sizeof(fault_msg)) != sizeof(fault_msg)) {
-      perror("ioctl_userfaultfd read");
-      DBGH << "++ read failed" << std::endl;
-      err();
-    }
-
-    ivy->rpcserver->call(1, "ping", "");
-    
-    char *addr = (char *)fault_msg.arg.pagefault.address;
-
-    if (fault_msg.event & UFFD_EVENT_PAGEFAULT) {
-      DBGH << "Got page fault at " << (void*)(addr) << std::endl;
-      /* TODO: handle the page here */
-
-      /* Check if this is a write fault */
-      if (fault_msg.arg.pagefault.flags & UFFD_PAGEFAULT_FLAG_WRITE) {
-	DBGH << "Write fault" << std::endl;
-	ivy->wr_fault_hdlr(addr);
-      } else {
-	DBGH << "Read fault" << std::endl;
-	ivy->rd_fault_hdlr(addr);
-      }      
-
-      struct uffdio_range range = {};
-      range.start = (uint64_t)addr;
-      range.len = 4096;
-
-      struct uffdio_zeropage zero_pg = {};
-      zero_pg.range = range;
-
-      if (ioctl(ivy->fd, UFFDIO_ZEROPAGE, &zero_pg) == -1) {
-	perror("ioctl/wake");
-	exit(1);
-      }
-      std::this_thread::sleep_for(1000ms);
-    }
-  }
 }
 
 res_t<void_ptr> Ivy::create_mem_region(size_t bytes) {

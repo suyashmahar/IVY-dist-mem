@@ -23,6 +23,8 @@
 #include "json.hpp"
 #include "rpcserver.hh"
 
+#include <signal.h>
+
 using void_ptr = void *;
 
 namespace libivy {   
@@ -77,11 +79,14 @@ namespace libivy {
     void request_lock(void_ptr addr, size_t bytes);
     /* Private methods */
   private:
+    /** @brief Check the permission of a memory location */
+    IvyAccessType read_mem_perm(void_ptr addr);
+    
     /** @brief Registers fault handler for this->mem */
     mres_t reg_fault_hdlr();
 
     /** @brief Handles the page faults for the memory region */
-    static void_ptr pg_fault_hdlr(void *args);
+    static void sigaction_hdlr(int sig, siginfo_t *info, void * uctx);
 
     /** @brief Register a range of address with pg fault hdlr */
     mres_t reg_addr_range(void *start, size_t bytes);
