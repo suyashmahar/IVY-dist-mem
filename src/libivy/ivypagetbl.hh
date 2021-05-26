@@ -28,8 +28,9 @@ namespace libivy {
       // info_t (const info_t&) = delete;
       // info_t& operator=(const info_t&) = delete;
       
-      set<string> copyset;
+      set<size_t> copyset; // Set of node ids
       IvyAccessType access;
+      idx_t owner;
     };
   
     using addr_t = uint64_t;

@@ -9,6 +9,7 @@
 #include "error.hh"
 #include "../common.hh"
 #include "rpcserver.hh"
+#include "rpc/rpc_error.h"
 
 #include <future>
 #include <thread>
@@ -118,15 +119,29 @@ res_t<string> RpcServer::call(size_t nodeId, string name, string buf) {
        << " with buffer " << buf << " addr = " << this->nodes[nodeId]
        << std::endl;
 
-  auto msg = this->clients[nodeId]->call("ping", "asd");
-  DBGH << "Message = " << msg.get() << std::endl;
-  auto result = msg.as<string>();
-
-  DBGH << "result = " << result << std::endl;
+  res_t<string> ret_val;
   
-  res_t<string> ret_val = {result, {}};
+  try {
+    auto msg = this->clients[nodeId]->call(name, buf);
+    DBGH << "Message = " << msg.get() << std::endl;
+    auto result = msg.as<string>();
 
-  DBGH << "Call complete" << std::endl;
+    DBGH << "result = " << result << std::endl;
+  
+    ret_val = {result, {}};
 
+    DBGH << "Call complete" << std::endl;
+  } catch (std::exception &e) {
+    DBGH << "RPC failed" << std::endl;
+    return {"", "RPC failed"};
+  }
+  
   return ret_val;
+}
+
+void
+RpcServer::register_recv_funcs(vector<pair<string, rpc_recv_f>> lst) {
+  for (auto elem : lst) {
+    this->server->bind(elem.first, elem.second);
+  }
 }

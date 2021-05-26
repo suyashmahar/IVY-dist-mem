@@ -51,6 +51,8 @@ namespace libivy {
     res_t<string> call(size_t nodeId, string name, string buf);
 
     mres_t start_serving();
+
+    string ca_va() { return "ca va"; }
   };
 }
 

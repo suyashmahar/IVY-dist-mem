@@ -135,21 +135,23 @@ void setup_shm(Ivy &ivy, std::string in_fname) {
   in_f >> elems;
 
   size_t region_sz = sizeof(uint64_t)*elems + sizeof(shm_hdr);
-  auto [shm, err] = ivy.get_shm();
+  auto [shm_, err] = ivy.get_shm();
 
   if (err.has_value()) {
     throw std::runtime_error("get_shm(): " + err.value());
   }
 
-  DBGH << "Memsetting range " << shm << " + "
+  DBGH << "Memsetting range " << shm_ << " + "
        << region_sz << std::endl;
 
   // DBGH << "First value = " << ((uint64_t*)shm)[0] << std::endl;
-  std::memset(shm, 0, region_sz);
+  std::memset(shm_, 0, region_sz);
 
-  ivy.request_lock(shm, 4096);
+  ivy.request_lock(shm_, 4096);
 
-  std::memset(shm, 0, region_sz);
+  std::memset(shm_, 0, region_sz);
+
+  shm = reinterpret_cast<shm_layout*>(shm_);
 }
 
 void populate_shm(std::string in_fname) {

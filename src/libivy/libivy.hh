@@ -25,9 +25,10 @@
 
 #include <signal.h>
 
-using void_ptr = void *;
 
 namespace libivy {   
+  using void_ptr = void *;
+  using byte_ptr = uint8_t*;
   using libivy::RpcServer;
   using std::optional;
   using std::pair;
@@ -37,6 +38,9 @@ namespace libivy {
   using std::unique_ptr;
   using std::mutex;
 
+  constexpr char* FAIL_STR = (char*)"No can't do";
+  constexpr size_t PG_SZ = 4096;
+  
   class Ivy {
     /* Private variables */
   private:
@@ -52,16 +56,21 @@ namespace libivy {
     size_t region_sz; // bytes
     void_ptr region;
     mutex fault_hdlr_live;
+    void_ptr base_addr;
 
     void_ptr mem;
 
     string NODES_KEY = "nodes";
     string MANAGER_ID_KEY = "manager_id";
     string REGION_SZ_KEY = "region_sz";
+    string BASE_ADDR = "base_addr";
+
+    string GET_OWNER = "get_owner";
+    string FETCH_PG = "fetch_pg";
 
     int fd;
 
-    optional<unique_ptr<libivy::IvyPageTable>> pg_tbl;
+    unique_ptr<libivy::IvyPageTable> pg_tbl;
 
     /* Public interface */
   public:
@@ -79,6 +88,8 @@ namespace libivy {
     void request_lock(void_ptr addr, size_t bytes);
     /* Private methods */
   private:
+    
+    
     /** @brief Check the permission of a memory location */
     IvyAccessType read_mem_perm(void_ptr addr);
     
@@ -105,26 +116,31 @@ namespace libivy {
 		      IvyAccessType access);
 
     /** @brief Fetch a page from its owner directly to the destination */
-    mres_t fetch_pg(void_ptr addr);
+    mres_t fetch_pg(size_t node, void_ptr addr);
 
     /** @brief Service a read request for a page from the app */
-    mres_t serv_rd_rq(void_ptr page_addr);
+    res_t<string> serv_rd_rq(void_ptr page_addr, idx_t node);
   
     /** @brief Service a write request for a page from the app */
     mres_t serv_wr_rq(void_ptr page_addr);
 
     /** @brief Check if the address is managed by the current node */
     bool is_owner(void_ptr pg_addr);
+    
+    /** @brief Get the owner node id from a page address */
+    string get_owner_str(string pg_addr);
 
-    /** @brief Ask manager for access to a page */
-    mres_t req_manager(void_ptr addr, IvyAccessType access);
+    /** @brief Ask manager for access to a page, returns owner */
+    res_t<size_t> req_manager(void_ptr addr, IvyAccessType access);
   
     /** @brief Acknowledge manager for access to a page */
     mres_t ack_manager(void_ptr addr, IvyAccessType access);
 
     /** @brief Invalidates the page on every node (runs on manager) */
-    mres_t invalidate(void_ptr addr, vector<string> nodes);
+    mres_t invalidate(void_ptr addr, vector<size_t> nodes);
 
+    /** @brief Read a page from memory and convert it to a string */
+    string read_page(void_ptr addr);
   };
 
   template <typename T>
