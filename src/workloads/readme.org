@@ -1,0 +1,7 @@
+* Workloads for IVY
+** psort
+   Sorts an array
+** pdot
+   Dot product of two vectors
+** pingpong
+   Test workload, ping pongs messages between two processes
