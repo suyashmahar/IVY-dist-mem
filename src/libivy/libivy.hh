@@ -131,6 +131,9 @@ namespace libivy {
     
     /** @brief Get the owner node id from a page address */
     string get_owner_str(string pg_addr);
+    
+    /** @brief Get the owner node id from a page address */
+    size_t get_owner(void_ptr pg_addr);
 
     /** @brief Ask manager for access to a page, returns owner */
     res_t<size_t> req_manager(void_ptr addr, IvyAccessType access);

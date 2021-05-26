@@ -123,6 +123,10 @@ res_t<string> RpcServer::call(size_t nodeId, string name, string buf) {
   
   try {
     auto msg = this->clients[nodeId]->call(name, buf);
+    DBGH << "Connection state = "
+	 << this->clients[nodeId]->get_connection_state()
+	 << std::endl;
+    
     DBGH << "Message = " << msg.get() << std::endl;
     auto result = msg.as<string>();
 
@@ -132,7 +136,7 @@ res_t<string> RpcServer::call(size_t nodeId, string name, string buf) {
 
     DBGH << "Call complete" << std::endl;
   } catch (std::exception &e) {
-    DBGH << "RPC failed" << std::endl;
+    DBGH << "RPC failed: " << e.what() << std::endl;
     return {"", "RPC failed"};
   }
   
@@ -162,4 +166,9 @@ RpcServer::register_recv_funcs(vector<pair<string, rpc_recv_f>> lst) {
   for (auto elem : lst) {
     this->server->bind(elem.first, elem.second);
   }
+}
+
+
+RpcServer::~RpcServer() {
+  DBGH << "Destructor for rpcserver called" << std::endl;
 }

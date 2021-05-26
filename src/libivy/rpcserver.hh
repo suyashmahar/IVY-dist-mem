@@ -45,7 +45,7 @@ namespace libivy {
     mres_t start_send();    
   public:
     RpcServer(vector<string> nodes, size_t myId);
-
+    ~RpcServer();
     /** @brief Register */
     void register_recv_funcs(vector<pair<string, rpc_recv_f>>);
 

@@ -237,18 +237,27 @@ mres_t Ivy::reg_fault_hdlr() {
 mres_t Ivy::set_access(void_ptr addr, size_t pg_cnt,
 			    IvyAccessType access) {
   int prot = 0;
-
+  string prot_str = "";
+  
   switch (access) {
   case (IvyAccessType::RD):
     prot |= PROT_READ;
+    prot_str = "read";
     break;
   case (IvyAccessType::WR):
     prot |= PROT_WRITE;
+    prot_str = "write";
     break;
   case (IvyAccessType::RW):
     prot |= PROT_READ | PROT_WRITE;
+    prot_str = "read and write";
+    break;
+  case (IvyAccessType::NONE):
+    prot = 0;
+    prot_str = "none";
     break;
   default:
+    DBGH << "Unknown access type" << std::endl;
     return {"Unknown access type"};
   }
 
@@ -256,8 +265,9 @@ mres_t Ivy::set_access(void_ptr addr, size_t pg_cnt,
   auto addr_pg = pg_align(addr_val);
   auto addr_pg_ptr = reinterpret_cast<void_ptr>(addr_pg);
 
-  DBGH << "mprotect(" << addr_pg_ptr << ", " << pg_cnt*Ivy::PAGE_SZ << ", "
-       << prot << ")" << std::endl;
+  DBGH << "mprotect(" << addr_pg_ptr << ", "
+       << pg_cnt*Ivy::PAGE_SZ << ", "
+       << prot_str << ")" << std::endl;
 
   
   int mp_res = mprotect(addr_pg_ptr, pg_cnt * Ivy::PAGE_SZ, prot);
@@ -271,14 +281,7 @@ mres_t Ivy::set_access(void_ptr addr, size_t pg_cnt,
 }
 
 bool Ivy::is_owner(void_ptr pg_addr) {
-  uint64_t offset = (byte_ptr)this->region - (byte_ptr)pg_addr;
-
-  double frac = offset/this->region_sz;
-
-  DBGH << "frac = " << frac << std::endl;
-
-  // TODO: Implement this
-  return true;
+  return this->id == this->get_owner(pg_addr);
 }
 
 mres_t
@@ -296,6 +299,9 @@ Ivy::fetch_pg(size_t node, void_ptr addr, IvyAccessType accessType){
   case IvyAccessType::WR:
   case IvyAccessType::RW:
     req_name = FETCH_PG_RW;
+    break;
+  case IvyAccessType::NONE:
+    IVY_ERROR("Cannot request access of type NONE");
     break;
   }
 
@@ -321,25 +327,35 @@ Ivy::fetch_pg(size_t node, void_ptr addr, IvyAccessType accessType){
 
 res_t<string> Ivy::serv_rd_rq(void_ptr pg_addr, idx_t req_node) {
   FUNC_DUMP;
+
+  uint64_t addr_val = reinterpret_cast<uint64_t>(pg_addr);
+  
+  DBGH << "owner = " << this->pg_tbl->info[addr_val].owner
+       << std::endl;
+
   
   IVY_ASSERT(this->pg_tbl, "Page table uninit");
 
-  uint64_t addr_val = reinterpret_cast<uint64_t>(pg_addr);
 
   guard(this->pg_tbl->page_locks[addr_val]);
 
+  std::string page_contents = "";
+  
   if (this->is_owner(pg_addr)) {
     DBGH << "I'm the owner of addr " << pg_addr << std::endl;
     this->pg_tbl->info[addr_val].access = IvyAccessType::RD;
-    this->set_access(pg_addr, 1, IvyAccessType::NONE);
-    return {this->read_page(pg_addr), {}};
+
+    page_contents = this->read_page(pg_addr);
+    this->set_access(pg_addr, 1, IvyAccessType::RD);
   }
 
   if (unwrap(this->is_manager())){
     guard(this->pg_tbl->info_locks[addr_val]);
 
     this->pg_tbl->info[addr_val].copyset.insert(req_node);
+  }
 
+  if (unwrap(this->is_manager()) && !this->is_owner(pg_addr)) {
     auto owner_id = this->pg_tbl->info[addr_val].owner;
     auto owner_node = std::to_string(owner_id);
 
@@ -347,24 +363,31 @@ res_t<string> Ivy::serv_rd_rq(void_ptr pg_addr, idx_t req_node) {
     return {owner_node, {}};
   }
 
-  /* This node is neither the owner, nor the manager, return err */
-  return {FAIL_STR, {}};
+  IVY_ASSERT(!page_contents.empty(), "Could not read the memory page");
+  return {page_contents, {}};
 }
 
 res_t<string> Ivy::serv_wr_rq(void_ptr pg_addr, idx_t req_node) {
   FUNC_DUMP;
 
+  uint64_t addr_val = reinterpret_cast<uint64_t>(pg_addr);
+  
+  DBGH << "owner = " << this->pg_tbl->info[addr_val].owner
+       << std::endl;
+
   IVY_ASSERT(this->pg_tbl, "Page table uninit");
 
-  uint64_t addr_val = reinterpret_cast<uint64_t>(pg_addr);
-
+  std::string page_contents = "";
+  
   guard(this->pg_tbl->page_locks[addr_val]);
 
   if (this->is_owner(pg_addr)) {
     DBGH << "I'm the owner" << std::endl;
     this->pg_tbl->info[addr_val].access = IvyAccessType::RW;
+    page_contents = this->read_page(pg_addr);
+    
     this->set_access(pg_addr, 1, IvyAccessType::NONE);
-    return {this->read_page(pg_addr), {}};
+    this->pg_tbl->info[addr_val].owner = req_node;
   }
 
   if (unwrap(this->is_manager())) {
@@ -378,12 +401,15 @@ res_t<string> Ivy::serv_wr_rq(void_ptr pg_addr, idx_t req_node) {
     auto err = this->invalidate(pg_addr, ivld_set);
 
     this->pg_tbl->info[addr_val].copyset.clear();
+  }
 
+  if (unwrap(this->is_manager()) && !this->is_owner(pg_addr)) {
     auto owner_id = this->get_owner_str(std::to_string(addr_val));
     return {owner_id, {}};
   }
 
-  return {FAIL_STR, {}};
+  IVY_ASSERT(!page_contents.empty(), "Could not read the memory page");
+  return {page_contents, {}};
 }
 
 mres_t Ivy::rd_fault_hdlr(void_ptr addr) {
@@ -399,7 +425,8 @@ mres_t Ivy::rd_fault_hdlr(void_ptr addr) {
     guard(this->pg_tbl->info_locks[addr_val]);
     
     this->pg_tbl->info[addr_val].copyset.insert(this->id);
-    this->fetch_pg(1000, addr, IvyAccessType::RD);
+    auto owner_id = this->get_owner(addr);
+    this->fetch_pg(owner_id, addr, IvyAccessType::RD);
 
   } else {
     auto [owner, err] = this->req_manager(addr, IvyAccessType::RD);
@@ -474,20 +501,24 @@ mres_t Ivy::reg_addr_range(void *start, size_t bytes) {
 
 string Ivy::get_owner_str(std::string addr_str) {
   auto addr = std::stoul(addr_str, nullptr, 10);
-  
-  uint64_t offset = (byte_ptr)addr - (byte_ptr)this->region;
+  auto pg_addr = pg_align(addr);
 
-  DBGH << "offset = " << offset << ", sz = " << this->region_sz
-       << std::endl;
-  
-  double frac = offset/this->region_sz;
-
-  size_t node = std::floor(frac * this->nodes.size());
+  auto node = this->pg_tbl->info[pg_addr].owner;
 
   DBGH << "addr_str = " << addr_str << " mapped to node "
        << node << std::endl;
   
   return std::to_string(node);
+}
+
+size_t Ivy::get_owner(void_ptr addr) {
+  auto addr_ul = reinterpret_cast<uint64_t>(addr);
+  auto addr_str = std::to_string(addr_ul);
+
+  auto owner_str = this->get_owner_str(addr_str);
+  auto owner = std::stoul(owner_str, nullptr, 10);
+
+  return owner;
 }
 
 res_t<size_t> Ivy::req_manager(void_ptr addr, IvyAccessType access) {
