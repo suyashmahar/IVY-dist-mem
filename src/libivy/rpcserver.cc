@@ -139,6 +139,24 @@ res_t<string> RpcServer::call(size_t nodeId, string name, string buf) {
   return ret_val;
 }
 
+res_t<string>
+RpcServer::call_blocking(size_t nodeId, string name, string buf) {
+  optional<err_t> err = "";
+  string val;
+  
+  while (err.has_value()) {
+    auto [res_, err_] = this->call(nodeId, name, buf);
+
+    DBGH << "Sleeping for 1000ms" << std::endl;
+    std::this_thread::sleep_for(1000ms);
+
+    val = res_;
+    err = err_;
+  }
+
+  return {val, {}};
+}
+
 void
 RpcServer::register_recv_funcs(vector<pair<string, rpc_recv_f>> lst) {
   for (auto elem : lst) {

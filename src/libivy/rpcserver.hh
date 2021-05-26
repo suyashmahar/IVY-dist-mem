@@ -45,10 +45,15 @@ namespace libivy {
     mres_t start_send();    
   public:
     RpcServer(vector<string> nodes, size_t myId);
-    
+
+    /** @brief Register */
     void register_recv_funcs(vector<pair<string, rpc_recv_f>>);
 
+    /** @brief Call a remote function */
     res_t<string> call(size_t nodeId, string name, string buf);
+
+    /** @brief Same as \ref call , but blocks until the success */
+    res_t<string> call_blocking(size_t nodeId, string name, string buf);
 
     mres_t start_serving();
 

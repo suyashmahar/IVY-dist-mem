@@ -27,10 +27,12 @@
   std::lock_guard<std::mutex>						\
   IVY_LINE_NAME(ivy_macro_lock_guard)((mtx))
 
-static inline constexpr size_t pg_align(size_t bytes) {
-  size_t result = (bytes/4096)*4096;
+template <typename T>
+static inline constexpr T pg_align(T addr) {
+  auto addr_uc = reinterpret_cast<uint64_t>(addr);
+  size_t result = (addr_uc/4096)*4096;
 
-  return result;
+  return reinterpret_cast<T>(result);
 }
 
 namespace libivy {
@@ -47,9 +49,10 @@ namespace libivy {
   using bytes_t = uint64_t;
 
   enum IvyAccessType {
-    RD = 0,
-    WR = 1,
-    RW = 2
+    RD   = 0,
+    WR   = 1,
+    RW   = 2,
+    NONE = 3
   };
 }
 

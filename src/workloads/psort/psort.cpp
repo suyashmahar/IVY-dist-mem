@@ -38,6 +38,7 @@ struct shm_layout {
 };
 
 optional<shm_layout *> shm;
+size_t region_sz = 0;
 
 void dump_shm() {
   std::cout << "SHM.data = :" << std::endl;
@@ -134,7 +135,7 @@ void setup_shm(Ivy &ivy, std::string in_fname) {
   size_t elems;  
   in_f >> elems;
 
-  size_t region_sz = sizeof(uint64_t)*elems + sizeof(shm_hdr);
+  region_sz = sizeof(uint64_t)*elems + sizeof(shm_hdr);
   auto [shm_, err] = ivy.get_shm();
 
   if (err.has_value()) {
@@ -145,16 +146,17 @@ void setup_shm(Ivy &ivy, std::string in_fname) {
        << region_sz << std::endl;
 
   // DBGH << "First value = " << ((uint64_t*)shm)[0] << std::endl;
-  std::memset(shm_, 0, region_sz);
+  // std::memset(shm_, 0, region_sz);
 
-  ivy.request_lock(shm_, 4096);
+  // ivy.request_lock(shm_, 4096);
 
-  std::memset(shm_, 0, region_sz);
 
   shm = reinterpret_cast<shm_layout*>(shm_);
 }
 
-void populate_shm(std::string in_fname) {
+void populate_shm(Ivy &ivy, std::string in_fname) {
+  std::memset(shm.value(), 0, region_sz);
+  
   std::fstream in_f(in_fname);
   
   int in_num;
@@ -237,7 +239,7 @@ int main(int argc, char *argv[]) {
   setup_shm(ivy, in_fname);
     
   if (is_manager) {
-    populate_shm(in_fname);
+    populate_shm(ivy, in_fname);
     wait_for_workers();
     merge_worker();
   } else {

@@ -66,7 +66,8 @@ namespace libivy {
     string BASE_ADDR = "base_addr";
 
     string GET_OWNER = "get_owner";
-    string FETCH_PG = "fetch_pg";
+    string FETCH_PG_RD = "fetch_pg_rd";
+    string FETCH_PG_RW = "fetch_pg_rw";
 
     int fd;
 
@@ -116,13 +117,14 @@ namespace libivy {
 		      IvyAccessType access);
 
     /** @brief Fetch a page from its owner directly to the destination */
-    mres_t fetch_pg(size_t node, void_ptr addr);
+    mres_t
+    fetch_pg(size_t node, void_ptr addr, IvyAccessType accessType);
 
     /** @brief Service a read request for a page from the app */
     res_t<string> serv_rd_rq(void_ptr page_addr, idx_t node);
   
     /** @brief Service a write request for a page from the app */
-    mres_t serv_wr_rq(void_ptr page_addr);
+    res_t<string> serv_wr_rq(void_ptr page_addr, idx_t node);
 
     /** @brief Check if the address is managed by the current node */
     bool is_owner(void_ptr pg_addr);
@@ -141,6 +143,14 @@ namespace libivy {
 
     /** @brief Read a page from memory and convert it to a string */
     string read_page(void_ptr addr);
+
+    /* Adapter functions for RPC */
+
+    /** @brief Adapts \ref serv_rd_rq */
+    string serv_rd_rq_adapter(string in);
+    
+    /** @brief Adapts \ref serv_wr_rq */
+    string serv_wr_rq_adapter(string in);
   };
 
   template <typename T>

@@ -41,4 +41,5 @@
 	      << std::string(__FUNCTION__) << "()"		\
 	      << "\x1B[0m" << "]\x1B[95m ERROR: \x1B[0m")
 
+#define FUNC_DUMP (DBGH << " called()" << std::endl)
 #endif // ifdef RELEASE
