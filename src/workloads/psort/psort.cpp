@@ -22,7 +22,9 @@ using std::optional;
 using std::span;
 using std::vector;
 
-constexpr static size_t NODES = 2;
+constexpr static size_t NODES_TOTAL = 2;
+constexpr static size_t NODES_WORKER = 1;
+
 constexpr static pid_t CHILD_PID = 0;
 constexpr static char CANARY_VAL[] = "DEADBEEFBAADBEEF";
 
@@ -33,7 +35,7 @@ struct shm_hdr {
   char canary[sizeof(CANARY_VAL)];
   uint64_t elems;      /* Total num of elements in shm */
   uint8_t ready;       /* Signal ready to workers */
-  uint8_t done[NODES]; /* Signal completion to manager */
+  uint8_t done[NODES_WORKER]; /* Signal completion to manager */
   uint64_t nodes;      /* Total number of nodes */
 
 
@@ -97,7 +99,7 @@ void sort_worker(size_t id) {
        << " elems per node = " << elems_per_node << std::endl;
 
   for (size_t i = 0; i < elems_per_node; i++) {
-    for (size_t j = 1; j < elems_per_node-1; j++) {
+    for (size_t j = 1; j < elems_per_node; j++) {
       if (data_ptr[j - 1] > data_ptr[j]) {
 	auto temp = data_ptr[j - 1];
         data_ptr[j - 1] = data_ptr[j];
@@ -127,9 +129,9 @@ void sort_worker(size_t id) {
 void merge_worker() {
   ASSERT_VALID;
   
-  size_t iter[NODES];
+  size_t iter[NODES_WORKER];
 
-  for (size_t i = 0; i < NODES; i++) {
+  for (size_t i = 0; i < NODES_WORKER; i++) {
     iter[i] = 0;
   }
 
@@ -140,8 +142,8 @@ void merge_worker() {
   };
 
   auto done = [&iter]() -> bool {
-    for (size_t i = 0; i < NODES; i++) {
-      if (iter[i] != shm.value()->header.elems/NODES){
+    for (size_t i = 0; i < NODES_WORKER; i++) {
+      if (iter[i] != shm.value()->header.elems/NODES_WORKER){
 	return false;
       }
     }
@@ -150,21 +152,22 @@ void merge_worker() {
   };
   
   while (!done()) {
-    vector<uint64_t> cur_elems(NODES);
+    vector<uint64_t> cur_elems(NODES_WORKER);
 
     uint64_t max_elem = 0;
     uint64_t max_idx;
-    for (size_t i = 0; i < NODES; i++) {
-      if (iter[i] != shm.value()->header.elems/NODES) {
+    for (size_t i = 0; i < NODES_WORKER; i++) {
+      if (iter[i] != shm.value()->header.elems/NODES_WORKER) {
 	// std::cout << "offset = " << i*ELEMS + iter[i] << std::endl;
-	 auto elem = shm.value()->data[i*shm.value()->header.elems/NODES + iter[i]];
-	  if (elem >= max_elem){
-	    max_idx = i;
-	    max_elem = elem;
-	  }
+	auto elems_per_node = shm.value()->header.elems/(NODES_WORKER);
+	auto elem = shm.value()->data[i*elems_per_node + iter[i]];
+	if (elem >= max_elem) {
+	  max_idx = i;
+	  max_elem = elem;
 	}
+      }
     }
-
+    
     std::cout << max_elem << " for " << max_idx << std::endl;
 
     next_iter(max_idx);    
@@ -216,12 +219,10 @@ void populate_shm(Ivy &ivy, std::string in_fname) {
   std::cout << "elems = " << shm.value() << std::endl;
   shm.value()->header.ready = 0;
 
-  for (size_t i = 0; i < NODES; i++)
+  for (size_t i = 0; i < NODES_WORKER; i++)
     shm.value()->header.done[i] = 0;
 
-  shm.value()->header.done[0] = 1;
-
-  shm.value()->header.nodes = NODES-1;
+  shm.value()->header.nodes = NODES_WORKER;
 
   dump_shm();
 
@@ -247,7 +248,7 @@ void wait_for_workers() {
 
     all_done = true;
 
-    for (size_t i = 1; i < NODES; i++) {
+    for (size_t i = 0; i < NODES_WORKER; i++) {
       if (shm.value()->header.done[i] != 1) {
 	std::cout << "node " << i << " done val = "
 		  << (int)shm.value()->header.done[i] << std::endl;
@@ -304,7 +305,7 @@ int main(int argc, char *argv[]) {
     wait_for_workers();
     merge_worker();
   } else {
-    sort_worker(id);
+    sort_worker(id-1);
   }
   
   std::cout << "All done" << std::endl;
