@@ -92,8 +92,24 @@ void sort_worker(size_t id) {
   span<uint64_t> workset{&data_ptr[start], elems_per_node};
 
   /* Use qsort on the region */
-  std::sort(workset.begin(), workset.end(), std::greater<uint64_t>{});
+  dump_shm();
+  DBGH << "Workset.begin() = " << (void*)&data_ptr[start]
+       << " elems per node = " << elems_per_node << std::endl;
 
+  for (size_t i = 0; i < elems_per_node; i++) {
+    for (size_t j = 1; j < elems_per_node-1; j++) {
+      if (data_ptr[j - 1] > data_ptr[j]) {
+	auto temp = data_ptr[j - 1];
+        data_ptr[j - 1] = data_ptr[j];
+        data_ptr[j] = temp;
+      }
+    }    
+  }
+  
+  // data_ptr[0] = 1000;
+  // std::sort(workset.begin(), workset.end(), std::greater<uint64_t>{});
+  dump_shm();
+  
   ASSERT_VALID;
   
   /* Signal ready */
@@ -205,7 +221,7 @@ void populate_shm(Ivy &ivy, std::string in_fname) {
 
   shm.value()->header.done[0] = 1;
 
-  shm.value()->header.nodes = NODES;
+  shm.value()->header.nodes = NODES-1;
 
   dump_shm();
 
@@ -227,7 +243,7 @@ void wait_for_workers() {
     ASSERT_VALID;
     
     /* Wait for 100ms before checking */
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    std::this_thread::sleep_for(std::chrono::seconds(10));
 
     all_done = true;
 
