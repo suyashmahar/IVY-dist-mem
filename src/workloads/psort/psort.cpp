@@ -22,14 +22,21 @@ using std::optional;
 using std::span;
 using std::vector;
 
-constexpr static size_t NODES = 4;
+constexpr static size_t NODES = 2;
 constexpr static pid_t CHILD_PID = 0;
+constexpr static char CANARY_VAL[] = "DEADBEEFBAADBEEF";
+
+#define ASSERT_VALID						\
+  (memcmp(shm.value()->header.canary, CANARY_VAL, sizeof(CANARY_VAL)) != 0 && "SHM corrupted")
 
 struct shm_hdr {
+  char canary[sizeof(CANARY_VAL)];
   uint64_t elems;      /* Total num of elements in shm */
   uint8_t ready;       /* Signal ready to workers */
   uint8_t done[NODES]; /* Signal completion to manager */
   uint64_t nodes;      /* Total number of nodes */
+
+
 };
 
 struct shm_layout {
@@ -60,14 +67,22 @@ void dump_shm() {
 void sort_worker(size_t id) {
   /* Busy waiting on ready */
   while (!shm.value()->header.ready) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::cout << "Waiting for the ready signal" << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   }
+
+  ASSERT_VALID;
 
   std::cout << "Ready value = " << (int)(shm.value()->header.ready)
 	    << std::endl;
   
   size_t elems = shm.value()->header.elems;
+  
+  ASSERT_VALID;
   size_t elems_per_node = (elems/shm.value()->header.nodes);
+
+  std::cout << "&elems = " << &shm.value()->header.elems << std::endl;
+  std::cout << "elems = " << elems << std::endl;
   
   size_t start = elems_per_node * id;
 
@@ -79,13 +94,23 @@ void sort_worker(size_t id) {
   /* Use qsort on the region */
   std::sort(workset.begin(), workset.end(), std::greater<uint64_t>{});
 
+  ASSERT_VALID;
+  
   /* Signal ready */
   shm.value()->header.done[id] = 1;
+
+  DBGH << "Written done to location "
+       << (void*)&shm.value()->header.done[id]
+       << std::endl;
+
+  ASSERT_VALID;
   
   std::cout << "Sorting completed at " << id << std::endl;
 }
 
 void merge_worker() {
+  ASSERT_VALID;
+  
   size_t iter[NODES];
 
   for (size_t i = 0; i < NODES; i++) {
@@ -171,16 +196,26 @@ void populate_shm(Ivy &ivy, std::string in_fname) {
   std::cout << "Read " << in_iter << " elems " << std::endl;
   
   shm.value()->header.elems = elems;
+  std::cout << "&elems = " << &shm.value()->header.elems << std::endl;
+  std::cout << "elems = " << shm.value() << std::endl;
   shm.value()->header.ready = 0;
 
   for (size_t i = 0; i < NODES; i++)
     shm.value()->header.done[i] = 0;
 
+  shm.value()->header.done[0] = 1;
+
   shm.value()->header.nodes = NODES;
 
   dump_shm();
 
+  std::memcpy(&shm.value()->header.canary, CANARY_VAL,
+	      sizeof(CANARY_VAL));
+
+
   shm.value()->header.ready = 1;
+  
+  ivy.dump_shm_page(0);
 }
 
 void wait_for_workers() {
@@ -189,13 +224,22 @@ void wait_for_workers() {
   size_t seclap = 0;
   
   while (!all_done) {
+    ASSERT_VALID;
+    
     /* Wait for 100ms before checking */
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     all_done = true;
 
-    for (size_t i = 0; i < NODES; i++) {
+    for (size_t i = 1; i < NODES; i++) {
       if (shm.value()->header.done[i] != 1) {
+	std::cout << "node " << i << " done val = "
+		  << (int)shm.value()->header.done[i] << std::endl;
+	
+	DBGH << "Checking location "
+	     << (void*)(&shm.value()->header.done[i])
+	     << " for id " << i
+	     << std::endl;
 	/* At least one node is not ready yet, wait for it */
 	all_done = false;
 	break;
@@ -203,7 +247,8 @@ void wait_for_workers() {
     }
 
     seclap += 1;
-    std::cout << seclap << " seconds elapsed waiting for workers" << std::endl;
+    std::cout << seclap
+	      << " seconds elapsed waiting for workers" << std::endl;
   }
 }
 
@@ -249,6 +294,8 @@ int main(int argc, char *argv[]) {
   std::cout << "All done" << std::endl;
 
   using namespace std::chrono_literals;
+
+  dump_shm();
   
   // std::this_thread::sleep_for(24h);
   while (1);

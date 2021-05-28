@@ -9,7 +9,6 @@
 #include "error.hh"
 #include "../common.hh"
 #include "rpcserver.hh"
-#include "rpc/rpc_error.h"
 
 #include <future>
 #include <thread>
@@ -75,13 +74,13 @@ RpcServer::RpcServer(vector<string> nodes, size_t myId)
 
   this->port = port_num;
 
-  this->server = std::make_unique<rpc::server>(this->port);
+  this->server = std::make_unique<httplib::Server>();
 
   size_t client_iter = 0;
   for (string client_name : this->nodes) {
-    auto [ node_name, node_port ] = parse_addr(client_name);
+    DBGH << "Creating client " << client_name << std::endl;
 
-    auto c = std::make_unique<rpc::client>(node_name, node_port);
+    auto c = std::make_unique<httplib::Client>(client_name.c_str());
     this->clients.push_back(std::move(c));
 	
     client_iter++;
@@ -94,13 +93,30 @@ mres_t RpcServer::start_recv() {
   DBGH << "Starting RPC server for " << this->hostname
        << ":" << this->port << std::endl;
   
-  for (size_t i = 0; i < recv_funcs.size(); i++) {
-    this->server->bind(recv_funcs[i].first, recv_funcs[i].second);
+  for (auto &recv_fun : this->recv_funcs) {
+    DBGH << "Registering function " << recv_fun.first << std::endl;
+    
+    auto fun = [&](const auto &req, auto &res) {
+      auto arg = std::string(req.body);
+      
+      auto &user_fun = recv_fun.second;
+
+      auto val = user_fun(arg);
+
+      // DBGH << "RPC(" << req.path << ") -> ("
+	   // << to_hex(val.c_str(), val.length()) << ")" << std::endl;
+      
+      res.set_content(val.c_str(), "text/plain");
+    };
+
+    auto fun_name = recv_fun.first;
+    
+    this->server->Post(fun_name.c_str(), fun);
   }
 
-  // this->server->bind("ping", [](string arg) -> string {return "pong";});
-
-  this->server->run();
+  std::thread([&]() {
+    this->server->listen(this->hostname.c_str(), this->port);
+  }).detach();
   
   return {};
 }
@@ -122,15 +138,18 @@ res_t<string> RpcServer::call(size_t nodeId, string name, string buf) {
   res_t<string> ret_val;
   
   try {
-    auto msg = this->clients[nodeId]->call(name, buf);
-    DBGH << "Connection state = "
-	 << this->clients[nodeId]->get_connection_state()
-	 << std::endl;
-    
-    DBGH << "Message = " << msg.get() << std::endl;
-    auto result = msg.as<string>();
+    auto msg = this->clients[nodeId]->Post(name.c_str(),
+					   buf.c_str(), "text/plain");
 
-    DBGH << "result = " << result << std::endl;
+    if (!msg)
+      throw std::runtime_error(std::to_string((int)msg.error()));
+
+    
+    DBGH << "Message = " << msg << std::endl;
+
+    auto result = std::string(msg->body);
+
+    // DBGH << "result = " << result << std::endl;
   
     ret_val = {result, {}};
 
@@ -164,7 +183,7 @@ RpcServer::call_blocking(size_t nodeId, string name, string buf) {
 void
 RpcServer::register_recv_funcs(vector<pair<string, rpc_recv_f>> lst) {
   for (auto elem : lst) {
-    this->server->bind(elem.first, elem.second);
+    this->recv_funcs.push_back({elem.first, elem.second});
   }
 }
 

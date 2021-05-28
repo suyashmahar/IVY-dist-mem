@@ -18,7 +18,9 @@
 
 #define IVY_ASSERT(val, msg)			\
   if (!(val)) {					\
-    throw std::runtime_error(msg);		\
+    DBGH << "Assertion failed, msg: "		\
+	 << msg << std::endl;			\
+    assert(0);					\
   } while (0)
 
 #define PSTR()					\

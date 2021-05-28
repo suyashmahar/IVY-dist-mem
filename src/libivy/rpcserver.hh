@@ -16,8 +16,7 @@
 #include <vector>
 #include <functional>
 
-#include "rpc/server.h"
-#include "rpc/client.h"
+#include "httplib.h"
 
 namespace libivy {
   using std::pair;
@@ -33,8 +32,8 @@ namespace libivy {
     string hostname;
     uint16_t port;
 
-    unique_ptr<rpc::server> server;
-    vector<unique_ptr<rpc::client>> clients;
+    unique_ptr<httplib::Server> server;
+    vector<unique_ptr<httplib::Client>> clients;
     
     vector<pair<string, rpc_recv_f>> recv_funcs;
 

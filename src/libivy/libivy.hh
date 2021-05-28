@@ -87,6 +87,7 @@ namespace libivy {
     res_t<bool> ca_va();
     void lock_all();
     void request_lock(void_ptr addr, size_t bytes);
+    void dump_shm_page(size_t page_num);
     /* Private methods */
   private:
     
