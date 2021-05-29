@@ -87,6 +87,8 @@ RpcServer::RpcServer(vector<string> nodes, size_t myId)
   }
   
   this->recv_funcs.push_back(std::make_pair("ping", ping));
+
+  DBGH << "Created an RPCServer at " << (void*)this << std::endl;
 }
 
 mres_t RpcServer::start_recv() {

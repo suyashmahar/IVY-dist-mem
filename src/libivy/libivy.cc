@@ -41,6 +41,9 @@ using std::vector;
 static Ivy *ivy_static_obj = nullptr;
 
 Ivy::Ivy(std::string cfg_f, idx_t id) {
+  
+  DBGH << "Created Ivy " << (void_ptr)this << std::endl;
+  
   if (ivy_static_obj != nullptr){
     IVY_ERROR("An ivy object already exists");
   }
@@ -90,33 +93,35 @@ Ivy::Ivy(std::string cfg_f, idx_t id) {
 
   this->pg_tbl = std::make_unique<IvyPageTable>();
   
-  auto get_owner_str_f
+  auto get_rd_page_f
     = [this](string in) -> string {
-      string result = this->get_owner_str(in);
+      DBGH << "Got call for get_wr_page_from_manager" << std::endl;
+      
+      string result = this->serv_rd_rq_adapter(in);
       DBGH << "Response to get_owner " << in << " -> size("
 	   << result.length() << ")" << std::endl;
 
       return result;
     };
-  auto serv_rd_req_f
+  auto get_wr_page_f
     = [this](string in) -> string {
-      auto result = this->serv_rd_rq_adapter(in);
-      DBGH << "Response to serv_rd_req " << in << " -> size("
+      DBGH << "Got call for get_wr_page_from_manager" << std::endl;
+
+      string result = this->serv_wr_rq_adapter(in);
+      DBGH << "Response to get_owner " << in << " -> size("
 	   << result.length() << ")" << std::endl;
+
       return result;
     };
-  auto serv_wr_req_f
-    = [this](string in) -> string {
-      auto result = this->serv_wr_rq_adapter(in);
-      DBGH << "Response to serv_wr_req " << in << " -> size("
-	   << result.length() << ")" << std::endl;
-      return result;
-    };
+
+  auto fetch_pg_adapter_f = [&](string in) -> string {
+    return this->fetch_pg_adapter(in);
+  };
   
   this->rpcserver->register_recv_funcs({
-      {GET_OWNER,   get_owner_str_f},
-      {FETCH_PG_RD, serv_rd_req_f},
-      {FETCH_PG_RW, serv_wr_req_f},
+      {GET_RD_PAGE_FROM_MANAGER, get_rd_page_f},
+      {GET_WR_PAGE_FROM_MANAGER, get_wr_page_f},
+      {FETCH_PG, fetch_pg_adapter_f},
     });
 
   this->rpcserver->start_serving();
@@ -154,6 +159,33 @@ res_t<bool> Ivy::is_manager() {
     return {false, {}};
   }
 }
+string Ivy::fetch_pg_adapter(string in) {
+  DBGH << "Fetch pg adapter called with input " << in << std::endl;
+  
+  auto sep_pos = in.find(':');
+  auto pg_addr = in.substr(0, sep_pos);
+  auto perm = in.substr(sep_pos + 1, in.length() - 1);
+
+  auto accessType = IvyAccessType::NONE;
+  if (perm == "rd") {
+    accessType = IvyAccessType::RD;
+  } else if (perm == "none") {
+    accessType = IvyAccessType::NONE;
+  } else {
+    IVY_ERROR("Unkown accessType for fetch_pg: " + perm);
+  }
+
+
+  auto addr_ul = std::stoul(pg_addr, nullptr, 10);
+  auto addr_ptr = reinterpret_cast<void_ptr>(addr_ul);
+
+  DBGH << "Address " << addr_ptr << std::endl;
+  
+  auto result = this->fetch_pg(addr_ptr, accessType);
+  DBGH << "Response to serv_wr_req " << in << " -> size(" << result.length()
+       << ")" << std::endl;
+  return result;
+};
 
 res_t<bool> Ivy::ca_va() { return {true, {}}; }
 
@@ -290,79 +322,43 @@ mres_t Ivy::set_access(void_ptr addr, size_t pg_cnt,
   return {};
 }
 
-bool Ivy::is_owner(void_ptr pg_addr) {
-  return this->id == this->get_owner(pg_addr);
-}
+// bool Ivy::is_owner(void_ptr pg_addr) {
+  // return this->id == this->get_owner(pg_addr);
+// }
 
-mres_t
-Ivy::fetch_pg(size_t node, void_ptr addr, IvyAccessType accessType) {
-  if (node != this->id) {
-    auto addr_ul = reinterpret_cast<uint64_t>(addr);
-    auto addr_pg = pg_align(addr_ul);
-    auto addr_str = std::to_string(addr_ul);
+string
+Ivy::fetch_pg(void_ptr addr, IvyAccessType accessType) {
+  auto addr_ul = reinterpret_cast<uint64_t>(addr);
+  auto addr_pg = pg_align(addr_ul);
+  auto addr_str = std::to_string(addr_ul);
 
-    string req_name = "";
+  string req_name = "";
+
+  /* Change this page to read only */
+  this->set_access((void_ptr)addr_pg, 1, IvyAccessType::RW);
   
-    switch (accessType) {
-    case IvyAccessType::RD:
-      req_name = FETCH_PG_RD;
-      break;
-    case IvyAccessType::WR:
-    case IvyAccessType::RW:
-      req_name = FETCH_PG_RW;
-      break;
-    case IvyAccessType::NONE:
-      IVY_ERROR("Cannot request access of type NONE");
-      break;
-    }
+  auto mem_str = this->read_page((void_ptr)addr_pg);
 
-    /* Add current node's name to the request */
-    addr_str += ":" + std::to_string(this->id);
+  DBGH << "Receive size = " << mem_str.length() << std::endl;
+  IVY_ASSERT(mem_str.length() == PAGE_SZ*2,
+	     "Fetch page did not receive 4096 bytes");
+
+  dump_from_hex(mem_str);
   
-    auto [mem_str, err]
-      = this->rpcserver->call_blocking(node, req_name, addr_str);
-
-    if (err.has_value()) return err;
-
-    DBGH << "Receive size = " << mem_str.length() << std::endl;
-    IVY_ASSERT(mem_str.length() == PAGE_SZ*2,
-	       "Fetch page did not receive 4096 bytes");
-      
-    auto mem = from_hex(mem_str);
-
-    auto a = to_hex((char*)mem, mem_str.length());
-    // IVY_ASSERT(a == mem_str, "Memory encoding failed");
-
-    DBGH << "Got page from node " << node << ": " << std::endl;
-    dump_from_hex(mem_str);
-    // DBGH << "Got memory = " << mem_str << std::endl;
-
-
-    /* Temporarily allow writes to this location */
-    this->set_access((void_ptr)addr_pg, 1, IvyAccessType::RW);
+  this->set_access((void_ptr)addr_pg, 1, accessType);
   
-    std::memcpy(reinterpret_cast<void_ptr>(addr_pg),
-		mem, PAGE_SZ);
-
-    DBGH << "Dump from memory: " << std::endl;
-    this->read_page((void_ptr)addr_pg);
-      
-  }
-
-  /* Set the correct access permissions */
-  this->set_access(addr, 1, accessType);
-  
-  return {};
+  return mem_str;
 }
 
 res_t<string> Ivy::serv_rd_rq(void_ptr pg_addr, idx_t req_node) {
   FUNC_DUMP;
+  IVY_ASSERT(unwrap(this->is_manager()), "get rd on non manager node");
 
   uint64_t addr_val = reinterpret_cast<uint64_t>(pg_addr);
 
-  DBGH << "Addr = " << (void_ptr)addr_val << ", owner = "
-       << this->get_owner(pg_addr)
-       << std::endl;
+  // DBGH << "Addr = " << (void_ptr)addr_val << ", owner = "
+       // << this->get_owner(pg_addr)
+       // << std::endl;
 
   IVY_ASSERT(this->pg_tbl, "Page table uninit");
 
@@ -371,29 +367,44 @@ res_t<string> Ivy::serv_rd_rq(void_ptr pg_addr, idx_t req_node) {
 
   std::string page_contents = "";
   
-  if (this->is_owner(pg_addr)) {
-    DBGH << "I'm the owner of addr " << pg_addr << std::endl;
-    this->pg_tbl->info[addr_val].access = IvyAccessType::RD;
+  // if (this->is_owner(pg_addr)) {
+  //   DBGH << "I'm the owner of addr " << pg_addr << std::endl;
+  //   this->pg_tbl->info[addr_val].access = IvyAccessType::RD;
 
-    page_contents = this->read_page(pg_addr);
-    this->set_access(pg_addr, 1, IvyAccessType::RD);
-  } else {
-    DBGH << "I'm not the owner :(" << std::endl;
-  }
+  //   page_contents = this->read_page(pg_addr);
+  //   this->set_access(pg_addr, 1, IvyAccessType::RD);
+  // } else {
+  //   DBGH << "I'm not the owner :(" << std::endl;
+  // }
 
   if (unwrap(this->is_manager())){
     ivyguard(this->pg_tbl->info_locks[addr_val]);
 
     this->pg_tbl->info[addr_val].copyset.insert(req_node);
+
+    auto owner_node = this->pg_tbl->info[addr_val].owner;
+    auto req = std::to_string(addr_val) + ":rd";
+    DBGH << "fetch_pg_adapter(" << req << ")" << std::endl;
+    if (owner_node == 0) {
+      page_contents = this->fetch_pg_adapter(req);
+    } else {
+      auto [page_cnt_, err_]
+	= this->rpcserver->call_blocking(owner_node, FETCH_PG, req);
+      IVY_ASSERT(err_.has_value(), "Blocking call failed");
+      page_contents = page_cnt_;
+    }
+
+  } else {
+    IVY_ERROR("Tried serving from non-manager node");
   }
 
-  if (unwrap(this->is_manager()) && !this->is_owner(pg_addr)) {
-    auto owner_id = this->pg_tbl->info[addr_val].owner;
-    auto owner_node = std::to_string(owner_id);
+  // if (unwrap(this->is_manager()) && !this->is_owner(pg_addr)) {
+  //   auto owner_id = this->pg_tbl->info[addr_val].owner;
+  //   auto owner_node = std::to_string(owner_id);
 
-    /* This implementation just returns with the owner's name */
-    return {owner_node, {}};
-  }
+  //   /* This implementation just returns with the owner's name */
+  //   return {owner_node, {}};
+  // }
 
   IVY_ASSERT(!page_contents.empty(), "Could not read the memory page");
 
@@ -403,8 +414,12 @@ res_t<string> Ivy::serv_rd_rq(void_ptr pg_addr, idx_t req_node) {
 
 res_t<string> Ivy::serv_wr_rq(void_ptr pg_addr, idx_t req_node) {
   FUNC_DUMP;
+  DBGH << "Address = " << pg_addr << std::endl;
+  IVY_ASSERT(unwrap(this->is_manager()), "get wr on non manager node");
 
   uint64_t addr_val = reinterpret_cast<uint64_t>(pg_addr);
+
+  DBGH << "Addr_val = " << addr_val << std::endl;
   
   DBGH << "owner = " << this->pg_tbl->info[addr_val].owner
        << std::endl;
@@ -414,17 +429,17 @@ res_t<string> Ivy::serv_wr_rq(void_ptr pg_addr, idx_t req_node) {
   std::string page_contents = "";
   
   ivyguard(this->pg_tbl->page_locks[addr_val]);
-  auto am_owner = this->is_owner(pg_addr);
+  // auto am_owner = this->is_owner(pg_addr);
   
-  if (am_owner) {
-    DBGH << "I'm the owner" << std::endl;
-    this->pg_tbl->info[addr_val].access = IvyAccessType::RW;
-    page_contents = this->read_page(pg_addr);
+  // if (am_owner) {
+    // DBGH << "I'm the owner" << std::endl;
+    // this->pg_tbl->info[addr_val].access = IvyAccessType::RW;
+    // page_contents = this->read_page(pg_addr);
     
-    this->set_access(pg_addr, 1, IvyAccessType::NONE);
-    DBGH << "Changed owner node for " << pg_addr
-	 << " to " << req_node;
-  }
+    // this->set_access(pg_addr, 1, IvyAccessType::NONE);
+    // DBGH << "Changed owner node for " << pg_addr
+	 // << " to " << req_node;
+  // }
 
   if (unwrap(this->is_manager())) {
     ivyguard(this->pg_tbl->info_locks[addr_val]);
@@ -433,18 +448,35 @@ res_t<string> Ivy::serv_wr_rq(void_ptr pg_addr, idx_t req_node) {
     std::copy(this->pg_tbl->info[addr_val].copyset.begin(),
 	      this->pg_tbl->info[addr_val].copyset.end(),
 	      std::back_inserter(ivld_set));
+
+    auto owner_node = this->pg_tbl->info[addr_val].owner;
+    auto req = std::to_string(addr_val) + ":none";
+    
+    DBGH << "fetch_pg_adapter(" << req << ")" << std::endl;
+    if (owner_node != 0) {
+      auto [page_cnt_, err_]
+	= this->rpcserver->call_blocking(owner_node, FETCH_PG, req);
+      IVY_ASSERT(!err_.has_value(), "Reading page failed");
+      page_contents = page_cnt_;
+    } else {
+      auto page_cnt_ = this->fetch_pg_adapter(req);
+      page_contents = page_cnt_;      
+    }
     
     auto err = this->invalidate(pg_addr, ivld_set);
 
     this->pg_tbl->info[addr_val].copyset.clear();
     this->pg_tbl->info[addr_val].owner = req_node;
-  }
 
-  if (unwrap(this->is_manager()) && !am_owner) {
+  } else {
+    IVY_ERROR("Tried serving from non-manager node");
+  }
+  
+  // if (unwrap(this->is_manager()) && !am_owner) {
     // auto owner_id = this->get_owner_str(std::to_string(addr_val));
     // return {owner_id, {}};
-    IVY_ASSERT(0, "This node is not the owner");
-  }
+    // IVY_ASSERT(0, "This node is not the owner");
+  // }
 
   IVY_ASSERT(!page_contents.empty(), "Could not read the memory page");
   return {page_contents, {}};
@@ -457,32 +489,35 @@ mres_t Ivy::rd_fault_hdlr(void_ptr addr) {
 
   uint64_t addr_val = pg_align(reinterpret_cast<uint64_t>(addr));
   
-  ivyguard(pg_tbl->page_locks[addr_val]);
+  // ivyguard(pg_tbl->page_locks[addr_val]);
 
-  if (unwrap(this->is_manager())) {
-    ivyguard(this->pg_tbl->info_locks[addr_val]);
+  // if (unwrap(this->is_manager())) {
+    // ivyguard(this->pg_tbl->info_locks[addr_val]);
     
-    this->pg_tbl->info[addr_val].copyset.insert(this->id);
-    auto owner_id = this->get_owner(addr);
-    auto err = this->fetch_pg(owner_id, addr, IvyAccessType::RD);
+    // this->pg_tbl->info[addr_val].copyset.insert(this->id);
+    // auto owner_id = this->get_owner(addr);
+    // auto err = this->req_manager(addr, IvyAccessType::RD);
     
-    if (err.has_value()) return err;
-  } else {
-    auto [owner, err] = this->req_manager(addr, IvyAccessType::RD);
+    // if (err.has_value()) return err;
+  // } else {
+    // auto [owner, err] = this->req_manager(addr, IvyAccessType::RD);
 
-    if (err.has_value()) return err;
+    // if (err.has_value()) return err;
 
-    err = this->set_access(addr, 1, IvyAccessType::RD);
-    if (err.has_value()) return err;
+    // err = this->set_access(addr, 1, IvyAccessType::RD);
+    // if (err.has_value()) return err;
     
-    err = this->fetch_pg(owner, addr, IvyAccessType::RD);
-    IVY_ASSERT(!err.has_value(), "Fetch page failed");
+    // err = this->fetch_pg(owner, addr, IvyAccessType::RD);
+    // IVY_ASSERT(!err.has_value(), "Fetch page failed");
     
-    this->pg_tbl->info[addr_val].owner = owner;
+    // this->pg_tbl->info[addr_val].owner = owner;
     
-    if (err.has_value()) return err;
-  }
+    // if (err.has_value()) return err;
+  // }
 
+  auto err = this->get_rd_page_from_mngr(addr);
+  IVY_ASSERT(!err.has_value(), "Reading from manager failed");
+  
   this->pg_tbl->info[addr_val].access = IvyAccessType::RD;
 
   DBGH << "Read fault serviced " << std::endl;
@@ -495,39 +530,42 @@ mres_t Ivy::wr_fault_hdlr(void_ptr addr) {
 
   uint64_t addr_val = pg_align(reinterpret_cast<uint64_t>(addr));
 
-  ivyguard(pg_tbl->page_locks[addr_val]);
+  // ivyguard(pg_tbl->page_locks[addr_val]);
 
   mres_t result = {};
 
-  if (unwrap(this->is_manager())) {
-    ivyguard(this->pg_tbl->info_locks[addr_val]);
+  // if (unwrap(this->is_manager())) {
+  //   ivyguard(this->pg_tbl->info_locks[addr_val]);
 
-    vector<size_t> ivld_set;
-    std::copy(this->pg_tbl->info[addr_val].copyset.begin(),
-	      this->pg_tbl->info[addr_val].copyset.end(),
-	      std::back_inserter(ivld_set));
+  //   vector<size_t> ivld_set;
+  //   std::copy(this->pg_tbl->info[addr_val].copyset.begin(),
+  // 	      this->pg_tbl->info[addr_val].copyset.end(),
+  // 	      std::back_inserter(ivld_set));
     
-    auto err = this->invalidate(addr, ivld_set);
+  //   auto err = this->invalidate(addr, ivld_set);
 
-    if (err.has_value()) return err;
+  //   if (err.has_value()) return err;
 
-    this->pg_tbl->info[addr_val].copyset.clear();
+  //   this->pg_tbl->info[addr_val].copyset.clear();
 
-    err = this->set_access(addr, 1, IvyAccessType::RW);
+  //   err = this->set_access(addr, 1, IvyAccessType::RW);
 
-    if (err.has_value()) return err;
-  } else {
-    auto [owner, err]
-      = this->req_manager(addr, IvyAccessType::WR);
+  //   if (err.has_value()) return err;
+  // } else {
+  //   auto [owner, err]
+  //     = this->req_manager(addr, IvyAccessType::WR);
     
-    if (err.has_value()) return err;
+  //   if (err.has_value()) return err;
     
-    if ((err = this->fetch_pg(owner, addr, IvyAccessType::RW)).has_value())
-      return err;
+  //   if ((err = this->fetch_pg(owner, addr, IvyAccessType::RW)).has_value())
+  //     return err;
 
-    this->pg_tbl->info[addr_val].owner = this->id;
+  //   this->pg_tbl->info[addr_val].owner = this->id;
     
-  }
+  // }
+
+  auto err = this->get_wr_page_from_mngr(addr);
+  IVY_ASSERT(!err.has_value(), "Reading from manager failed");
 
   this->pg_tbl->info[addr_val].access = IvyAccessType::WR;
 
@@ -545,69 +583,71 @@ mres_t Ivy::reg_addr_range(void *start, size_t bytes) {
   return {};
 }
 
-string Ivy::get_owner_str(std::string addr_str) {
-  auto addr = std::stoul(addr_str, nullptr, 10);
-  auto pg_addr = pg_align(addr);
-  auto addr_str_aligned = std::to_string(pg_addr);
-
-  string node;
-  err_t err;
-  
-  if (unwrap(this->is_manager())) {
-    auto node_ul = this->pg_tbl->info[pg_addr].owner;
-    node = std::to_string(node_ul);
-  } else {
-    auto [node_, err_]
-      = this->rpcserver->call_blocking(0, GET_OWNER, addr_str_aligned);
-
-    IVY_ASSERT(!err_.has_value(), "blocking call failed for get_owner");
-  
-    DBGH << "addr_str = " << addr_str_aligned << " mapped to node "
-	 << node_ << std::endl;
-  
-    node = node_;
-  }
-
-  return node;
-}
-
-size_t Ivy::get_owner(void_ptr addr) {
-  size_t owner = 0;
-  
-  auto addr_ul = reinterpret_cast<uint64_t>(addr);
+mres_t Ivy::get_rd_page_from_mngr(void_ptr addr) {
+  auto addr_aligned = pg_align(addr);
+  auto addr_ul = reinterpret_cast<uint64_t>(addr_aligned);
   auto addr_str = std::to_string(addr_ul);
 
-  auto owner_str = this->get_owner_str(addr_str);
-  owner = std::stoul(owner_str, nullptr, 10);
+  string mem_str;
+
+  string payload = ":" + std::to_string(this->id);
   
-  return owner;
-}
+  if (unwrap(this->is_manager())) {
+    mem_str = this->serv_wr_rq_adapter(addr_str + payload);
+  } else {
+    auto [mem_str_, err_]
+      = this->rpcserver->call_blocking(0, GET_RD_PAGE_FROM_MANAGER,
+				       addr_str + payload);
 
-res_t<size_t> Ivy::req_manager(void_ptr addr, IvyAccessType access) {
-  auto addr_val = reinterpret_cast<uint64_t>(addr);
-  auto addr_str = std::to_string(addr_val);
-  
-  optional<err_t> err = {""};
-
-  auto [owner, _]
-    = this->rpcserver->call_blocking(0, GET_OWNER, addr_str);
-
-  DBGH << "Raw owner value received = " << owner << std::endl;
-
-  size_t owner_ul = 0UL;
-  
-  try {
-    owner_ul = std::stoul(owner, nullptr, 10);
-  } catch (std::exception &e) {
-    return {0, {"Parsing exception for owner `" + owner + "`"}};
+    IVY_ASSERT(!err_.has_value(), "Fetching page from manager failed");
+    mem_str = mem_str_;
   }
+  
+  IVY_ASSERT(mem_str.length() == 2*PAGE_SZ,
+	     "Not enough bytes received from the manager"
+	     + std::string(", expected ") + std::to_string(2*PAGE_SZ)
+	     + std::string(", got ") + std::to_string(mem_str.length()));
+  
+  auto mem = from_hex(mem_str);
 
-  return {owner_ul, {}};
+  this->set_access(addr_aligned, 1, IvyAccessType::RW);
+  std::memcpy(addr_aligned, mem, PAGE_SZ);
+  this->set_access(addr_aligned, 1, IvyAccessType::RD);
+
+  return {};
 }
 
+mres_t Ivy::get_wr_page_from_mngr(void_ptr addr) {
+  auto addr_aligned = pg_align(addr);
+  auto addr_ul = reinterpret_cast<uint64_t>(addr_aligned);
+  auto addr_str = std::to_string(addr_ul);
 
-mres_t Ivy::ack_manager(void_ptr addr, IvyAccessType access) {
-  return "unimplemented"; 
+  string mem_str;
+  
+  string payload = ":" + std::to_string(this->id);
+  
+  if (unwrap(this->is_manager())) {
+    mem_str = this->serv_wr_rq_adapter(addr_str + payload);
+  } else {
+    auto [mem_str_, err_]
+      = this->rpcserver->call_blocking(0, GET_WR_PAGE_FROM_MANAGER,
+				     addr_str + payload);
+    IVY_ASSERT(!err_.has_value(), "Fetching page from manager failed");
+    mem_str = mem_str_;
+  }
+  
+  IVY_ASSERT(mem_str.length() == 2*PAGE_SZ,
+	     "Not enough bytes received from the manager"
+	     + std::string(", expected ") + std::to_string(2*PAGE_SZ)
+	     + std::string(", got ") + std::to_string(mem_str.length()));
+  
+  auto mem = from_hex(mem_str);
+
+  this->set_access(addr_aligned, 1, IvyAccessType::RW);
+  std::memcpy(addr_aligned, mem, PAGE_SZ);
+
+  return {};
+  
 }
 
 
@@ -676,11 +716,11 @@ string Ivy::serv_rd_rq_adapter(string in) {
   DBGH << "Got RD request for addr = " << addr_str << " from node "
        << req_node_str << std::endl;
 
-  auto addr_ul = std::stoul(addr_str);
+  auto addr_ul = std::stoul(addr_str, nullptr, 10);
   auto addr_ptr = reinterpret_cast<void_ptr>(addr_ul);
   addr_ptr = pg_align(addr_ptr);
   
-  auto req_node = std::stoul(req_node_str);
+  auto req_node = std::stoul(req_node_str, nullptr, 10);
   
   auto [res, err] = this->serv_rd_rq(addr_ptr, req_node);
   if (err.has_value()) IVY_ERROR(err.value());
@@ -695,11 +735,18 @@ string Ivy::serv_wr_rq_adapter(string in) {
   DBGH << "Got WR request for addr = " << addr_str << " from node "
        << req_node_str << std::endl;
 
-  auto addr_ul = std::stoul(addr_str);
+
+  auto addr_ul = std::stoul(addr_str, nullptr, 10);
   auto addr_ptr = reinterpret_cast<void_ptr>(addr_ul);
+  DBGH << addr_str << " -> " << addr_ul << " -> " << addr_ptr
+       << std::endl;
   addr_ptr = pg_align(addr_ptr);
+
+  DBGH << addr_str << " -> " << addr_ul << " -> " << addr_ptr
+       << std::endl;
+
   
-  auto req_node = std::stoul(req_node_str);
+  auto req_node = std::stoul(req_node_str, nullptr, 10);
   
   auto [res, err] = this->serv_wr_rq(addr_ptr, req_node);
   if (err.has_value()) IVY_ERROR(err.value());

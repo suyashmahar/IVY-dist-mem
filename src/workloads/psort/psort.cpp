@@ -23,7 +23,7 @@ using std::span;
 using std::vector;
 
 constexpr static size_t NODES_TOTAL = 2;
-constexpr static size_t NODES_WORKER = 1;
+constexpr static size_t NODES_WORKER = 2;
 
 constexpr static pid_t CHILD_PID = 0;
 constexpr static char CANARY_VAL[] = "DEADBEEFBAADBEEF";
@@ -100,10 +100,10 @@ void sort_worker(size_t id) {
 
   for (size_t i = 0; i < elems_per_node; i++) {
     for (size_t j = 1; j < elems_per_node; j++) {
-      if (data_ptr[j - 1] > data_ptr[j]) {
-	auto temp = data_ptr[j - 1];
-        data_ptr[j - 1] = data_ptr[j];
-        data_ptr[j] = temp;
+      if (workset[j - 1] > workset[j]) {
+	auto temp = workset[j - 1];
+        workset[j - 1] = workset[j];
+        workset[j] = temp;
       }
     }    
   }
@@ -154,23 +154,23 @@ void merge_worker() {
   while (!done()) {
     vector<uint64_t> cur_elems(NODES_WORKER);
 
-    uint64_t max_elem = 0;
-    uint64_t max_idx;
+    uint64_t min_elem = UINT64_MAX;
+    uint64_t min_idx;
     for (size_t i = 0; i < NODES_WORKER; i++) {
       if (iter[i] != shm.value()->header.elems/NODES_WORKER) {
 	// std::cout << "offset = " << i*ELEMS + iter[i] << std::endl;
 	auto elems_per_node = shm.value()->header.elems/(NODES_WORKER);
 	auto elem = shm.value()->data[i*elems_per_node + iter[i]];
-	if (elem >= max_elem) {
-	  max_idx = i;
-	  max_elem = elem;
+	if (elem <= min_elem) {
+	  min_idx = i;
+	  min_elem = elem;
 	}
       }
     }
     
-    std::cout << max_elem << " for " << max_idx << std::endl;
+    std::cout << min_elem << " for " << min_idx << std::endl;
 
-    next_iter(max_idx);    
+    next_iter(min_idx);    
   }
 }
 
@@ -249,9 +249,9 @@ void wait_for_workers() {
     all_done = true;
 
     for (size_t i = 0; i < NODES_WORKER; i++) {
+      std::cout << "node " << i << " done val = "
+		<< (int)shm.value()->header.done[i] << std::endl;
       if (shm.value()->header.done[i] != 1) {
-	std::cout << "node " << i << " done val = "
-		  << (int)shm.value()->header.done[i] << std::endl;
 	
 	DBGH << "Checking location "
 	     << (void*)(&shm.value()->header.done[i])

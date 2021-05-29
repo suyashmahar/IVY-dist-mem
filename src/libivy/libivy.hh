@@ -65,9 +65,9 @@ namespace libivy {
     string REGION_SZ_KEY = "region_sz";
     string BASE_ADDR = "base_addr";
 
-    string GET_OWNER = "get_owner";
-    string FETCH_PG_RD = "fetch_pg_rd";
-    string FETCH_PG_RW = "fetch_pg_rw";
+    string GET_RD_PAGE_FROM_MANAGER = "get_rd_page_from_manager";
+    string GET_WR_PAGE_FROM_MANAGER = "get_wr_page_from_manager";
+    string FETCH_PG = "fetch_pg";
 
     int fd;
 
@@ -117,9 +117,9 @@ namespace libivy {
     mres_t set_access(void_ptr addr, size_t pg_cnt,
 		      IvyAccessType access);
 
-    /** @brief Fetch a page from its owner directly to the destination */
-    mres_t
-    fetch_pg(size_t node, void_ptr addr, IvyAccessType accessType);
+    /** @brief Set new perm and return the page as string */
+    string
+    fetch_pg(void_ptr addr, IvyAccessType accessType);
 
     /** @brief Service a read request for a page from the app */
     res_t<string> serv_rd_rq(void_ptr page_addr, idx_t node);
@@ -148,6 +148,9 @@ namespace libivy {
     /** @brief Read a page from memory and convert it to a string */
     string read_page(void_ptr addr);
 
+    mres_t get_rd_page_from_mngr(void_ptr addr);
+    mres_t get_wr_page_from_mngr(void_ptr addr);
+    
     /* Adapter functions for RPC */
 
     /** @brief Adapts \ref serv_rd_rq */
@@ -155,6 +158,8 @@ namespace libivy {
     
     /** @brief Adapts \ref serv_wr_rq */
     string serv_wr_rq_adapter(string in);
+
+    string fetch_pg_adapter(string in);
   };
 
   template <typename T>
