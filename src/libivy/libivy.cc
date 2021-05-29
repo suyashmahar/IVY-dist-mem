@@ -322,10 +322,6 @@ mres_t Ivy::set_access(void_ptr addr, size_t pg_cnt,
   return {};
 }
 
-// bool Ivy::is_owner(void_ptr pg_addr) {
-  // return this->id == this->get_owner(pg_addr);
-// }
-
 string
 Ivy::fetch_pg(void_ptr addr, IvyAccessType accessType) {
   auto addr_ul = reinterpret_cast<uint64_t>(addr);
@@ -356,9 +352,6 @@ res_t<string> Ivy::serv_rd_rq(void_ptr pg_addr, idx_t req_node) {
 
   uint64_t addr_val = reinterpret_cast<uint64_t>(pg_addr);
 
-  // DBGH << "Addr = " << (void_ptr)addr_val << ", owner = "
-       // << this->get_owner(pg_addr)
-       // << std::endl;
 
   IVY_ASSERT(this->pg_tbl, "Page table uninit");
 
@@ -367,16 +360,6 @@ res_t<string> Ivy::serv_rd_rq(void_ptr pg_addr, idx_t req_node) {
 
   std::string page_contents = "";
   
-  // if (this->is_owner(pg_addr)) {
-  //   DBGH << "I'm the owner of addr " << pg_addr << std::endl;
-  //   this->pg_tbl->info[addr_val].access = IvyAccessType::RD;
-
-  //   page_contents = this->read_page(pg_addr);
-  //   this->set_access(pg_addr, 1, IvyAccessType::RD);
-  // } else {
-  //   DBGH << "I'm not the owner :(" << std::endl;
-  // }
-
   if (unwrap(this->is_manager())){
     ivyguard(this->pg_tbl->info_locks[addr_val]);
 
@@ -397,14 +380,6 @@ res_t<string> Ivy::serv_rd_rq(void_ptr pg_addr, idx_t req_node) {
   } else {
     IVY_ERROR("Tried serving from non-manager node");
   }
-
-  // if (unwrap(this->is_manager()) && !this->is_owner(pg_addr)) {
-  //   auto owner_id = this->pg_tbl->info[addr_val].owner;
-  //   auto owner_node = std::to_string(owner_id);
-
-  //   /* This implementation just returns with the owner's name */
-  //   return {owner_node, {}};
-  // }
 
   IVY_ASSERT(!page_contents.empty(), "Could not read the memory page");
 
@@ -429,17 +404,6 @@ res_t<string> Ivy::serv_wr_rq(void_ptr pg_addr, idx_t req_node) {
   std::string page_contents = "";
   
   ivyguard(this->pg_tbl->page_locks[addr_val]);
-  // auto am_owner = this->is_owner(pg_addr);
-  
-  // if (am_owner) {
-    // DBGH << "I'm the owner" << std::endl;
-    // this->pg_tbl->info[addr_val].access = IvyAccessType::RW;
-    // page_contents = this->read_page(pg_addr);
-    
-    // this->set_access(pg_addr, 1, IvyAccessType::NONE);
-    // DBGH << "Changed owner node for " << pg_addr
-	 // << " to " << req_node;
-  // }
 
   if (unwrap(this->is_manager())) {
     ivyguard(this->pg_tbl->info_locks[addr_val]);
@@ -472,11 +436,6 @@ res_t<string> Ivy::serv_wr_rq(void_ptr pg_addr, idx_t req_node) {
     IVY_ERROR("Tried serving from non-manager node");
   }
   
-  // if (unwrap(this->is_manager()) && !am_owner) {
-    // auto owner_id = this->get_owner_str(std::to_string(addr_val));
-    // return {owner_id, {}};
-    // IVY_ASSERT(0, "This node is not the owner");
-  // }
 
   IVY_ASSERT(!page_contents.empty(), "Could not read the memory page");
   return {page_contents, {}};
@@ -489,32 +448,6 @@ mres_t Ivy::rd_fault_hdlr(void_ptr addr) {
 
   uint64_t addr_val = pg_align(reinterpret_cast<uint64_t>(addr));
   
-  // ivyguard(pg_tbl->page_locks[addr_val]);
-
-  // if (unwrap(this->is_manager())) {
-    // ivyguard(this->pg_tbl->info_locks[addr_val]);
-    
-    // this->pg_tbl->info[addr_val].copyset.insert(this->id);
-    // auto owner_id = this->get_owner(addr);
-    // auto err = this->req_manager(addr, IvyAccessType::RD);
-    
-    // if (err.has_value()) return err;
-  // } else {
-    // auto [owner, err] = this->req_manager(addr, IvyAccessType::RD);
-
-    // if (err.has_value()) return err;
-
-    // err = this->set_access(addr, 1, IvyAccessType::RD);
-    // if (err.has_value()) return err;
-    
-    // err = this->fetch_pg(owner, addr, IvyAccessType::RD);
-    // IVY_ASSERT(!err.has_value(), "Fetch page failed");
-    
-    // this->pg_tbl->info[addr_val].owner = owner;
-    
-    // if (err.has_value()) return err;
-  // }
-
   auto err = this->get_rd_page_from_mngr(addr);
   IVY_ASSERT(!err.has_value(), "Reading from manager failed");
   
@@ -530,39 +463,7 @@ mres_t Ivy::wr_fault_hdlr(void_ptr addr) {
 
   uint64_t addr_val = pg_align(reinterpret_cast<uint64_t>(addr));
 
-  // ivyguard(pg_tbl->page_locks[addr_val]);
-
   mres_t result = {};
-
-  // if (unwrap(this->is_manager())) {
-  //   ivyguard(this->pg_tbl->info_locks[addr_val]);
-
-  //   vector<size_t> ivld_set;
-  //   std::copy(this->pg_tbl->info[addr_val].copyset.begin(),
-  // 	      this->pg_tbl->info[addr_val].copyset.end(),
-  // 	      std::back_inserter(ivld_set));
-    
-  //   auto err = this->invalidate(addr, ivld_set);
-
-  //   if (err.has_value()) return err;
-
-  //   this->pg_tbl->info[addr_val].copyset.clear();
-
-  //   err = this->set_access(addr, 1, IvyAccessType::RW);
-
-  //   if (err.has_value()) return err;
-  // } else {
-  //   auto [owner, err]
-  //     = this->req_manager(addr, IvyAccessType::WR);
-    
-  //   if (err.has_value()) return err;
-    
-  //   if ((err = this->fetch_pg(owner, addr, IvyAccessType::RW)).has_value())
-  //     return err;
-
-  //   this->pg_tbl->info[addr_val].owner = this->id;
-    
-  // }
 
   auto err = this->get_wr_page_from_mngr(addr);
   IVY_ASSERT(!err.has_value(), "Reading from manager failed");
