@@ -33,13 +33,19 @@ constexpr static char CANARY_VAL[] = "DEADBEEFBAADBEEF";
 
 struct shm_hdr {
   char canary[sizeof(CANARY_VAL)];
-  uint64_t elems;      /* Total num of elements in shm */
-  uint8_t ready;       /* Signal ready to workers */
-  uint8_t done[NODES_WORKER]; /* Signal completion to manager */
-  uint64_t nodes;      /* Total number of nodes */
+  uint64_t elems;      /* Total num of elements in shm */ // 8
+  uint8_t ready;       /* Signal ready to workers */ // 1
+  uint8_t done[NODES_WORKER]; /* Signal completion to manager */ // 2
+  uint64_t nodes;      /* Total number of nodes */ // 8
 
-
+  /* Pad to make the header take up 1 page of space */
+  uint8_t padding[libivy::Ivy::PAGE_SZ
+		  - (sizeof(CANARY_VAL)
+		     + sizeof(uint64_t) * (3)
+		     + sizeof(shm_hdr::nodes))];
 };
+
+static_assert(sizeof(shm_hdr) == libivy::Ivy::PAGE_SZ);
 
 struct shm_layout {
   shm_hdr header;

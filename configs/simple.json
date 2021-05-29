@@ -5,6 +5,6 @@
 	"localhost:2002"
     ],
     "manager_id": 0,
-    "region_sz": 16408,
+    "region_sz": 1048576,
     "base_addr": "0x10000000000"
 }

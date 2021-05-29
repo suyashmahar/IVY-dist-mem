@@ -373,7 +373,7 @@ res_t<string> Ivy::serv_rd_rq(void_ptr pg_addr, idx_t req_node) {
     } else {
       auto [page_cnt_, err_]
 	= this->rpcserver->call_blocking(owner_node, FETCH_PG, req);
-      IVY_ASSERT(err_.has_value(), "Blocking call failed");
+      IVY_ASSERT(!err_.has_value(), "Blocking call failed");
       page_contents = page_cnt_;
     }
 
