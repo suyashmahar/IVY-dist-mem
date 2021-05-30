@@ -5,3 +5,5 @@
    Dot product of two vectors
 ** pingpong
    Test workload, ping pongs messages between two processes
+** pagefaultlatency
+   Test page fault latency using libivy
