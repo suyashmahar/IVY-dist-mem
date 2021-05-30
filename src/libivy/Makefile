@@ -6,7 +6,6 @@ OBJECTS := $(patsubst %.cc, %.o, $(SOURCES))
 INCLUDE :=-I../../vendor/headers/ -I../$(RPCLIB_INCLUDE)
 EXTRA_LDFLAGS :=-L$(RPCLIB_DIR)
 EXTRA_LINKFLAGS :=  -Wl,--whole-archive \
-			-lrpc \
 			-Wl,--no-whole-archive
 EXTRA_CXXFLAGS := #-fPIC
 
