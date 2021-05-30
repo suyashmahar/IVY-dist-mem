@@ -56,6 +56,8 @@ optional<shm_layout *> shm;
 size_t region_sz = 0;
 
 void dump_shm() {
+  return;
+  
   std::cout << "SHM.data = :" << std::endl;
   size_t line_cnt = 0;
   for (size_t iter = 0; iter < shm.value()->header.elems; iter++) {

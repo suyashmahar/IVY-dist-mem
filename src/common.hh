@@ -17,6 +17,7 @@
 #define DBGF 0 && std::cerr
 #define DBGW 0 && std::cerr
 #define DBGE 0 && std::cerr
+#define FUNC_DUMP
 #define LP_ASSERT(cond, msg)
 
 #else
