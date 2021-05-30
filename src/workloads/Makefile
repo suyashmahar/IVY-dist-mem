@@ -1,11 +1,11 @@
-.PHONY: pdot psort
+.PHONY: pdot psort pingpong pagefaultlatency
 
 include ../../common.make
 
-all: psort pdot
+all: psort pdot pingpong pagefaultlatency
 
-pdot psort:
+pdot psort pingpong pagefaultlatency:
 	$(IVY_MAKE) -C $@
 
-clean: psort_clean pdot_clean
+clean: psort_clean pdot_clean pingpong_clean pagefaultlatency_clean
 
