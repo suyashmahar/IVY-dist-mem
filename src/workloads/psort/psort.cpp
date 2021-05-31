@@ -23,7 +23,7 @@ using std::span;
 using std::vector;
 
 constexpr static size_t NODES_TOTAL = 2;
-constexpr static size_t NODES_WORKER = 2;
+constexpr static size_t NODES_WORKER = 3;
 
 constexpr static pid_t CHILD_PID = 0;
 constexpr static char CANARY_VAL[] = "DEADBEEFBAADBEEF";
@@ -33,10 +33,10 @@ constexpr static char CANARY_VAL[] = "DEADBEEFBAADBEEF";
 
 struct shm_hdr {
   char canary[sizeof(CANARY_VAL)];
-  uint64_t elems;      /* Total num of elements in shm */ // 8
-  uint8_t ready;       /* Signal ready to workers */ // 1
-  uint8_t done[NODES_WORKER]; /* Signal completion to manager */ // 2
-  uint64_t nodes;      /* Total number of nodes */ // 8
+  uint64_t elems;      /* Total num of elements in shm */
+  uint8_t ready;       /* Signal ready to workers */
+  uint8_t done[NODES_WORKER]; /* Signal completion to manager */
+  uint64_t nodes;      /* Total number of nodes */
 
   /* Pad to make the header take up 1 page of space */
   uint8_t padding[libivy::Ivy::PAGE_SZ
@@ -106,6 +106,7 @@ void sort_worker(size_t id) {
   DBGH << "Workset.begin() = " << (void*)&data_ptr[start]
        << " elems per node = " << elems_per_node << std::endl;
 
+  auto start_time = std::chrono::high_resolution_clock::now();
   for (size_t i = 0; i < elems_per_node; i++) {
     for (size_t j = 1; j < elems_per_node; j++) {
       if (workset[j - 1] > workset[j]) {
@@ -115,7 +116,15 @@ void sort_worker(size_t id) {
       }
     }    
   }
+  auto end_time = std::chrono::high_resolution_clock::now();
+
+  auto time_diff = end_time - start_time;
+  auto time_elapsed
+    = std::chrono::duration_cast<std::chrono::seconds>(time_diff);
   
+  std::cout << "Time taken = " << time_elapsed.count()
+	    << " s"
+	    << std::endl;  
   // data_ptr[0] = 1000;
   // std::sort(workset.begin(), workset.end(), std::greater<uint64_t>{});
   dump_shm();
