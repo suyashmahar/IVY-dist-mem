@@ -431,6 +431,8 @@ res_t<string> Ivy::serv_wr_rq(void_ptr pg_addr, idx_t req_node) {
   IVY_ASSERT(this->pg_tbl, "Page table uninit");
 
   std::string page_contents = "";
+  
+  auto owner_node = this->pg_tbl->info[addr_val].owner;
 
   /* Similar to serv read req, serv write req can only be served from
      the manager node */
@@ -449,21 +451,23 @@ res_t<string> Ivy::serv_wr_rq(void_ptr pg_addr, idx_t req_node) {
 	      this->pg_tbl->info[addr_val].copyset.end(),
 	      std::back_inserter(ivld_set));
 
-    auto owner_node = this->pg_tbl->info[addr_val].owner;
     auto req = std::to_string(addr_val) + ":none";
     
     DBGH << "fetch_pg_adapter(" << req << ")" << std::endl;
 
-    if (owner_node != 0) {
+    if (owner_node == 0) {
+      /* Call the function directly if the manager is also the
+	 owner */
+      auto page_cnt_ = this->fetch_pg_adapter(req);
+      page_contents = page_cnt_;
+    } else if (owner_node == req_node) {
+      page_contents = "";
+    } else if (owner_node != 0) {
       auto [page_cnt_, err_]
 	= this->rpcserver->call_blocking(owner_node, FETCH_PG, req);
       IVY_ASSERT(!err_.has_value(), "Reading page failed");
       page_contents = page_cnt_;
-    } else {
-      /* Call the function directly if the manager is also the
-	 owner */
-      auto page_cnt_ = this->fetch_pg_adapter(req);
-      page_contents = page_cnt_;      
+    } else {    
     }
     
     auto err = this->send_invalidations(pg_addr, ivld_set);
@@ -475,8 +479,10 @@ res_t<string> Ivy::serv_wr_rq(void_ptr pg_addr, idx_t req_node) {
     IVY_ERROR("Tried serving from non-manager node");
   }
   
-
-  IVY_ASSERT(!page_contents.empty(), "Could not read the memory page");
+  if (owner_node != req_node)
+    IVY_ASSERT(!page_contents.empty(),
+	       "Could not read the memory page");
+  
   return {page_contents, {}};
 }
 
@@ -605,17 +611,26 @@ mres_t Ivy::get_wr_page_from_mngr(void_ptr addr) {
     IVY_ASSERT(!err_.has_value(), "Fetching page from manager failed");
     mem_str = mem_str_;
   }
-  
-  IVY_ASSERT(mem_str.length() == 2*PAGE_SZ,
-	     "Not enough bytes received from the manager"
-	     + std::string(", expected ") + std::to_string(2*PAGE_SZ)
-	     + std::string(", got ") + std::to_string(mem_str.length()));
-  
-  auto mem = from_hex(mem_str);
 
+  auto cur_perm = this->read_mem_perm(addr_aligned);
+  
   /* Set the correct permission and copy the page to node's memory */
   this->set_access(addr_aligned, 1, IvyAccessType::RW);
-  std::memcpy(addr_aligned, mem, PAGE_SZ);
+
+
+  /* if this node already has read access to the page, no need to copy
+     it to the memory */
+  if (cur_perm != IvyAccessType::RD) {
+    std::stringstream errmsg;
+    errmsg << "Not enough bytes received from the manager, expected "
+	   << 2*PAGE_SZ << ", got " << mem_str.length()
+	   << std::endl;
+    IVY_ASSERT(mem_str.length() == 2*PAGE_SZ, errmsg.str());
+  
+    auto mem = from_hex(mem_str);
+
+    std::memcpy(addr_aligned, mem, PAGE_SZ);
+  }
 
   return {};  
 }
