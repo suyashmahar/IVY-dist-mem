@@ -38,7 +38,7 @@ int main(int argc, char *argv[]) {
     id = std::strtoul(argv[2], nullptr, 10);
     std::cout << "argv[3] = " << argv[3] << std::endl;
     worker_nodes = std::strtoul(argv[3], nullptr, 10);
-    if (id > 2) {
+    if (id > worker_nodes) {
       std::cout << "Wrong node ID" << std::endl;
       exit(1);
     }
