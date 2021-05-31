@@ -5,3 +5,4 @@ __pycache__
 *.so
 compile_commands.json
 .clangd/
+\#*#
