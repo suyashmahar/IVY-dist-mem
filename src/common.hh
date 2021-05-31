@@ -44,3 +44,5 @@
 
 #define FUNC_DUMP (DBGH << " called()" << std::endl)
 #endif // ifdef RELEASE
+
+#define P(val) (reinterpret_cast<void*>((val)))

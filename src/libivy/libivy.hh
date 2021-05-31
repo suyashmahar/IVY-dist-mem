@@ -60,14 +60,18 @@ namespace libivy {
 
     void_ptr mem;
 
-    string NODES_KEY = "nodes";
-    string MANAGER_ID_KEY = "manager_id";
-    string REGION_SZ_KEY = "region_sz";
-    string BASE_ADDR = "base_addr";
+    const string NODES_KEY = "nodes";
+    const string MANAGER_ID_KEY = "manager_id";
+    const string REGION_SZ_KEY = "region_sz";
+    const string BASE_ADDR = "base_addr";
 
-    string GET_RD_PAGE_FROM_MANAGER = "get_rd_page_from_manager";
-    string GET_WR_PAGE_FROM_MANAGER = "get_wr_page_from_manager";
-    string FETCH_PG = "fetch_pg";
+    const string OK = "ok";
+    const string NOT_OK = "not-ok";
+
+    const string GET_RD_PAGE_FROM_MANAGER = "get_rd_page_from_manager";
+    const string GET_WR_PAGE_FROM_MANAGER = "get_wr_page_from_manager";
+    const string FETCH_PG = "fetch_pg";
+    const string INVALIDATE_PG = "invalidate_pg";
 
     int fd;
 
@@ -85,8 +89,6 @@ namespace libivy {
     res_t<bool> is_manager();
 
     res_t<bool> ca_va();
-    void lock_all();
-    void request_lock(void_ptr addr, size_t bytes);
     void dump_shm_page(size_t page_num);
     /* Private methods */
   private:
@@ -143,7 +145,10 @@ namespace libivy {
     mres_t ack_manager(void_ptr addr, IvyAccessType access);
 
     /** @brief Invalidates the page on every node (runs on manager) */
-    mres_t invalidate(void_ptr addr, vector<size_t> nodes);
+    mres_t send_invalidations(void_ptr addr, vector<size_t> nodes);
+    
+    /** @brief Invalidates the page on this node */
+    mres_t invalidate(void_ptr addr);
 
     /** @brief Read a page from memory and convert it to a string */
     string read_page(void_ptr addr);
@@ -155,11 +160,9 @@ namespace libivy {
 
     /** @brief Adapts \ref serv_rd_rq */
     string serv_rd_rq_adapter(string in);
-    
-    /** @brief Adapts \ref serv_wr_rq */
     string serv_wr_rq_adapter(string in);
-
     string fetch_pg_adapter(string in);
+    string invalidate_adapter(string in);
   };
 
   template <typename T>

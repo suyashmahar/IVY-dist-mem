@@ -55,8 +55,13 @@ int main(int argc, char *argv[]) {
     
     while (arr_ul[0] < ITERATIONS) {
       /* Busy wait on the value */
-      while (arr_ul[0]%2 != id-1);
-
+      uint64_t count = 0;
+      while (arr_ul[0]%2 != id-1) {
+	if (count++ % 1000000000 == 0)
+	  DBGH << "Current count = " << count
+	       << ", arr_ul[0] = " << arr_ul[0] << std::endl;
+      }
+      
       arr_ul[0]++;
       
       std::cout << "Counter updated to "
