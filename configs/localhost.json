@@ -1,0 +1,12 @@
+{
+    "nodes": [
+	"localhost:2000",
+	"localhost:2001",
+	"localhost:2002",
+	"localhost:2003",
+	"localhost:2004"
+    ],
+    "manager_id": 0,
+    "region_sz": 268435456,
+    "base_addr": "0x10000000000"
+}

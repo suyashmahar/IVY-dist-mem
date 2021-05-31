@@ -49,15 +49,20 @@ int main(int argc, char *argv[]) {
   assert(!im_err.has_value() && "Manager lookup failed");
   
   if (is_manager) {
-    arr_ul[0] = arr_ul[1] = 0;
+    arr_ul[0] = 0;
   } else {
-    auto &my_counter = arr_ul[id];
-
     auto start_tm = std::chrono::high_resolution_clock::now();
-    while (my_counter < ITERATIONS) {
+    
+    while (arr_ul[0] < ITERATIONS) {
+      /* Busy wait on the value */
+      while (arr_ul[0]%2 != id-1);
+
+      arr_ul[0]++;
+      
       std::cout << "Counter updated to "
-		<< my_counter << std::endl;
+		<< arr_ul[0] << std::endl;
     }
+    
     auto end_tm = std::chrono::high_resolution_clock::now();
 
     auto dur = end_tm - start_tm;
