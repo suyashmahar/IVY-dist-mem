@@ -24,15 +24,20 @@ int main(int argc, char *argv[]) {
 
   std::string config_fname;
   size_t id;
-  if (argc != 3) {
+  size_t worker_nodes;
+  
+  if (argc != 4) {
     std::cout << "Usage: " << argv[0]
 	      << " <path to config file>"
 	      << " <nodeId>"
+	      << " <worker count>"
 	      << std::endl;
     exit(1);
   } else {
     config_fname = std::string(argv[1]);
     id = std::strtoul(argv[2], nullptr, 10);
+    std::cout << "argv[3] = " << argv[3] << std::endl;
+    worker_nodes = std::strtoul(argv[3], nullptr, 10);
     if (id > 2) {
       std::cout << "Wrong node ID" << std::endl;
       exit(1);
@@ -49,14 +54,14 @@ int main(int argc, char *argv[]) {
   assert(!im_err.has_value() && "Manager lookup failed");
   
   if (is_manager) {
-    arr_ul[0] = 0;
+    arr_ul[0] = 1;
   } else {
     auto start_tm = std::chrono::high_resolution_clock::now();
     
     while (arr_ul[0] < ITERATIONS) {
       /* Busy wait on the value */
       uint64_t count = 0;
-      while (arr_ul[0]%2 != id-1) {
+      while (arr_ul[0]%worker_nodes != id-1) {
 	if (count++ % 1000000000 == 0)
 	  DBGH << "Current count = " << count
 	       << ", arr_ul[0] = " << arr_ul[0] << std::endl;
