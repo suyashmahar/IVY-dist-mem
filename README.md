@@ -5,7 +5,11 @@ Using IVY's fixed ownership model.
 1. [analysis](src/analysis/): Memory trace visualization
 2. [libivy](src/libivy/): IVY implementation as a shared object
 3. [workloads](src/workloads/): Parallel workloads written in C++
-
+   1. [psort](src/workloads/psort): Parallel list sort
+   2. [pdot](src/workloads/pdot): Parallel vector dot-product
+   3. [pingpong](src/workloads/pingpong): Page ping-pongs between two nodes
+   4. [pagefaultlatency](src/workloads/pagefaultlatency): Calculates the cost of read and write page faults
+   
 ## API
 **Note:** libivy only supports C++20
 
