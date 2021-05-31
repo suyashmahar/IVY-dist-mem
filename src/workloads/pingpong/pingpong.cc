@@ -17,7 +17,7 @@ bool should_send = false;
 
 using namespace libivy;
 
-constexpr size_t ITERATIONS = 5;
+constexpr size_t ITERATIONS = 200;
 
 int main(int argc, char *argv[]) {
   using namespace std::chrono_literals;
@@ -70,7 +70,8 @@ int main(int argc, char *argv[]) {
     
     auto end_tm = std::chrono::high_resolution_clock::now();
 
-    auto dur = end_tm - start_tm;
+    auto diff = end_tm - start_tm;
+    auto dur = std::chrono::duration_cast<std::chrono::seconds>(diff);
 
     std::cout << "Seconds elapsed = "
 	      << dur.count() << std::endl;
