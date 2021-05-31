@@ -25,8 +25,8 @@
 #define IVY_DO_JOIN( symbol1, symbol2 ) symbol1##symbol2
 
 
-#define ivyguard(mtx)							\
-  std::lock_guard<std::mutex>						\
+#define ivyguard(mtx)				\
+  std::lock_guard<std::mutex>			\
   IVY_LINE_NAME(ivy_macro_lock_guard)((mtx))
 
 template <typename T>
@@ -56,7 +56,7 @@ namespace libivy {
     RW   = 2,
     NONE = 3
   };
-  } // namespace libivy
+} // namespace libivy
 
 static inline std::string to_hex(const char *arr, size_t len) {
   std::ostringstream ret;
@@ -68,17 +68,7 @@ static inline std::string to_hex(const char *arr, size_t len) {
     
     temp << std::hex << std::setfill('0') << std::setw(2)
 	 << std::uppercase << elem;
-
-    // std::cerr << "Encoded " << elem << " -> " << temp.str()
-    // 	      << std::endl;
     
-    if (ret.str().length() != last_len + 2) {
-    //   std::cerr << "Encoding failed (" << ret.str().length() << ", "
-    // 		<< last_len+2 << " :: "
-    // 		<< elem << " -> "
-    // 		<< temp.str() << std::endl;
-    }
-
     ret << temp.str();
     last_len = ret.str().length();
   }
@@ -93,11 +83,6 @@ static inline char *from_hex(const std::string& s) {
     char cur_slice_raw[3] = {s[i], s[i+1], 0};
     std::string cur_slice = std::string(cur_slice_raw);
 
-    // std::cout << "Trying to translate "
-	      // << std::string(cur_slice_raw)
-	      // << " to " << std::stoul(cur_slice, nullptr, 16)
-	      // << std::endl;
-    
     ret[i/2] = std::stoul(cur_slice, nullptr, 16);
   }
   
