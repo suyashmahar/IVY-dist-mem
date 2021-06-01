@@ -94,6 +94,8 @@ static inline char *from_hex(const std::string& s) {
 }
 
 static inline void dump_from_hex(const std::string &s) {
+  return;
+  
   std::cerr << std::endl;
   std::cerr << "Output : " << std::endl;
 
