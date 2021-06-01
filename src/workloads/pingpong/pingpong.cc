@@ -17,7 +17,7 @@ bool should_send = false;
 
 using namespace libivy;
 
-constexpr size_t ITERATIONS = 200;
+constexpr size_t ITERATIONS = 50;
 
 int main(int argc, char *argv[]) {
   using namespace std::chrono_literals;
