@@ -31,7 +31,7 @@ using std::optional;
 using std::span;
 using std::vector;
 
-constexpr static size_t NODES_WORKER = 3;
+constexpr static size_t NODES_WORKER = 2;
 
 constexpr static char CANARY_VAL[] = "DEADBEEFBAADBEEF";
 
@@ -94,6 +94,9 @@ void mult_worker(size_t id) {
   size_t startA = elems_per_node * id;
   size_t startB = elems + elems_per_node * id;
 
+  std::cout << "Elems per node = " << elems_per_node
+	    << std::endl;
+
   uint64_t *vec_ptr = shm.value()->vecs;
   
   /* Get a view into the shared memory this worker will sort */
@@ -119,6 +122,11 @@ void mult_worker(size_t id) {
   shm.value()->header.result[id] = sum;
   
   /* Signal ready */
+  std::cout << "Writing done to location "
+	    << P(&shm.value()->header.done[id])
+	    << " for id " << id
+	    << std::endl;
+  
   shm.value()->header.done[id] = 1;
   
   std::cout << "Multiply completed at " << id << std::endl;
@@ -195,12 +203,16 @@ int main(int argc, char *argv[]) {
     bool all_done = false;
     while (!all_done) {
       /* Wait for 100ms before checking */
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      std::this_thread::sleep_for(std::chrono::seconds(10));
 
       all_done = true;
 
       for (size_t i = 0; i < NODES_WORKER; i++) {
 	if (shm.value()->header.done[i] != 1) {
+	  std::cout << "Checking for node " << i
+		    << " at location "
+		    << P(&shm.value()->header.done[i])
+		    << std::endl;
 	  std::cout << "id " << i << " is not done yet" << std::endl;
 	  /* At least one node is not ready yet, wait for it */
 	  all_done = false;

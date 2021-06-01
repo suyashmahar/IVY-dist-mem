@@ -22,7 +22,7 @@ using std::optional;
 using std::span;
 using std::vector;
 
-constexpr static size_t NODES_WORKER = 3;
+constexpr static size_t NODES_WORKER = 2;
 constexpr static char CANARY_VAL[] = "DEADBEEFBAADBEEF";
 
 #define ASSERT_VALID						\

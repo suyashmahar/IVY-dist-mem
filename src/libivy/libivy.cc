@@ -41,7 +41,6 @@ using std::vector;
 static Ivy *ivy_static_obj = nullptr;
 
 Ivy::Ivy(std::string cfg_f, idx_t id) {
-  
   DBGH << "Created Ivy " << (void_ptr)this << std::endl;
   
   if (ivy_static_obj != nullptr){
@@ -584,7 +583,7 @@ mres_t Ivy::wr_fault_hdlr(void_ptr addr) {
 }
 
 mres_t Ivy::reg_addr_range(void *start, size_t bytes) {
-  IVY_ASSERT(this->fd != 0, "fd not initialized");
+  // IVY_ASSERT(this->fd != 0, "fd not initialized");
 
   if (-1 == mprotect(start, bytes, PROT_NONE)) {
     return {PSTR()};
