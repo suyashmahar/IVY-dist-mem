@@ -29,6 +29,12 @@
   std::lock_guard<std::mutex>			\
   IVY_LINE_NAME(ivy_macro_lock_guard)((mtx))
 
+#define wait_lock(mtx)					\
+  while (!(mtx).try_lock()) {				\
+    DBGH << "Lock failed, sleeping" << std::endl;	\
+    std::this_thread::sleep_for(1s);			\
+  }
+
 template <typename T>
 static inline constexpr T pg_align(T addr) {
   auto addr_uc = reinterpret_cast<uint64_t>(addr);
