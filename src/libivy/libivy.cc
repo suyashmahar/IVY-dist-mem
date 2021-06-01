@@ -529,7 +529,8 @@ mres_t Ivy::rd_fault_hdlr(void_ptr addr) {
   
     if (err.has_value()) {
       DBGH << "Retrying read fault after sleep" << std::endl;
-      this->pg_tbl->page_locks[addr_val].unlock();
+      if (!unwrap(this->is_manager()))
+	this->pg_tbl->page_locks[addr_val].unlock();
       std::this_thread::sleep_for(1s);
       continue; // Continue here
     }
@@ -550,28 +551,36 @@ mres_t Ivy::wr_fault_hdlr(void_ptr addr) {
   IVY_ASSERT(this->pg_tbl, "Page table uninit");
 
   uint64_t addr_val = pg_align(reinterpret_cast<uint64_t>(addr));
-  
-  if (!unwrap(this->is_manager())) {
-    DBGH << "Getting lock for addr " << P(addr_val) << std::endl;
-    wait_lock(this->pg_tbl->page_locks[addr_val]);
-    DBGH << "Lock address = " << P(&pg_tbl->page_locks[addr_val])
-	 << std::endl;
+
+  optional<err_t> err = {""};
+
+  while (err.has_value()) {
+    if (!unwrap(this->is_manager())) {
+      DBGH << "Getting lock for addr " << P(addr_val) << std::endl;
+      wait_lock(this->pg_tbl->page_locks[addr_val]);
+      DBGH << "Lock address = " << P(&pg_tbl->page_locks[addr_val])
+	   << std::endl;
+    }
+
+    err = this->get_wr_page_from_mngr(addr);
+
+    if (err.has_value()) {
+      DBGH << "Retrying write fault after sleep"<< std::endl;
+      if (!unwrap(this->is_manager()))
+	      this->pg_tbl->page_locks[addr_val].unlock();
+      std::this_thread::sleep_for(1s);
+      continue;
+    }
+
+    this->pg_tbl->info[addr_val].access = IvyAccessType::WR;
+
+    DBGH << "Write fault serviced" << std::endl;
+
+    if (!unwrap(this->is_manager()))
+      this->pg_tbl->page_locks[addr_val].unlock();
   }
-
-  mres_t result = {};
-
-  auto err = this->get_wr_page_from_mngr(addr);
   
-  IVY_ASSERT(!err.has_value(), "Reading from manager failed");
-
-  this->pg_tbl->info[addr_val].access = IvyAccessType::WR;
-
-  DBGH << "Write fault serviced" << std::endl;
-
-  if (!unwrap(this->is_manager()))
-    this->pg_tbl->page_locks[addr_val].unlock();
-  
-  return result;
+  return {};
 }
 
 mres_t Ivy::reg_addr_range(void *start, size_t bytes) {
