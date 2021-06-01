@@ -180,24 +180,26 @@ int main(int argc, char *argv[]) {
 
   shm = reinterpret_cast<shm_layout*>(shm_);
 
-  while (in_f >> in_num) {
-    shm.value()->vecs[in_iter++] = in_num;
+  if (unwrap(ivy.is_manager())) {
+    while (in_f >> in_num) {
+      shm.value()->vecs[in_iter++] = in_num;
+    }
+
+    std::cout << "Read " << in_iter << " elems " << std::endl;
+
+    std::memcpy(&shm.value()->header.canary, CANARY_VAL,
+		sizeof(CANARY_VAL));
+    shm.value()->header.elems = elems;
+    shm.value()->header.ready = 0;
+
+    for (size_t i = 0; i < NODES_WORKER; i++)
+      shm.value()->header.done[i] = 0;
+
+    dump_shm(0);
+    dump_shm(1);
+
+    shm.value()->header.ready = 1;
   }
-
-  std::cout << "Read " << in_iter << " elems " << std::endl;
-
-  std::memcpy(&shm.value()->header.canary, CANARY_VAL,
-	      sizeof(CANARY_VAL));
-  shm.value()->header.elems = elems;
-  shm.value()->header.ready = 0;
-
-  for (size_t i = 0; i < NODES_WORKER; i++)
-    shm.value()->header.done[i] = 0;
-
-  dump_shm(0);
-  dump_shm(1);
-
-  shm.value()->header.ready = 1;
 
   /* If this is not the manager node*/
   if (id != 0) {
