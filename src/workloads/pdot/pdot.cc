@@ -185,7 +185,9 @@ int main(int argc, char *argv[]) {
   }
 
   std::cout << "Read " << in_iter << " elems " << std::endl;
-  
+
+  std::memcpy(&shm.value()->header.canary, CANARY_VAL,
+	      sizeof(CANARY_VAL));
   shm.value()->header.elems = elems;
   shm.value()->header.ready = 0;
 

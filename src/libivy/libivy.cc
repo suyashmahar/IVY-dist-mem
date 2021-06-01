@@ -638,6 +638,9 @@ mres_t Ivy::get_wr_page_from_mngr(void_ptr addr) {
   string mem_str;
   
   string payload = ":" + std::to_string(this->id);
+
+  DBGH << "Getting the page from the manager for address: "
+       << addr << std::endl;
   
   if (unwrap(this->is_manager())) {
     /* Skip the HTTP server if I'm the manager */
@@ -652,6 +655,10 @@ mres_t Ivy::get_wr_page_from_mngr(void_ptr addr) {
       return err_;
     
     mem_str = mem_str_;
+
+    DBGH << "Call completed, page received:" << std::endl;
+    dump_from_hex(mem_str);
+    DBGH << std::endl;
   }
 
   auto cur_perm = this->read_mem_perm(addr_aligned);
