@@ -86,7 +86,7 @@ void dump_shm(size_t id) {
 void mult_worker(size_t id) {
   
   /* Busy waiting on ready */
-  while (!shm.value()->header.ready) {
+  while (shm.value()->header.ready != 1) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
   
@@ -187,7 +187,7 @@ int main(int argc, char *argv[]) {
   std::cout << "Read " << in_iter << " elems " << std::endl;
   
   shm.value()->header.elems = elems;
-  shm.value()->header.ready = false;
+  shm.value()->header.ready = 0;
 
   for (size_t i = 0; i < NODES_WORKER; i++)
     shm.value()->header.done[i] = 0;
@@ -195,7 +195,7 @@ int main(int argc, char *argv[]) {
   dump_shm(0);
   dump_shm(1);
 
-  shm.value()->header.ready = true;
+  shm.value()->header.ready = 1;
 
   /* If this is not the manager node*/
   if (id != 0) {

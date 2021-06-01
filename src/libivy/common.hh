@@ -67,7 +67,6 @@ namespace libivy {
 static inline std::string to_hex(const char *arr, size_t len) {
   std::ostringstream ret;
 
-  size_t last_len = 0;
   for (size_t i = 0; i < len; ++i) {
     std::ostringstream temp;
     uint32_t elem = static_cast<uint8_t>(arr[i]);
@@ -76,7 +75,6 @@ static inline std::string to_hex(const char *arr, size_t len) {
 	 << std::uppercase << elem;
     
     ret << temp.str();
-    last_len = ret.str().length();
   }
   
   return ret.str();
@@ -96,8 +94,6 @@ static inline char *from_hex(const std::string& s) {
 }
 
 static inline void dump_from_hex(const std::string &s) {
-  return;
-  
   std::cerr << std::endl;
   std::cerr << "Output : " << std::endl;
 
