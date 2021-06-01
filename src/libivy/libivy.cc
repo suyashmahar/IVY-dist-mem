@@ -602,7 +602,7 @@ mres_t Ivy::get_rd_page_from_mngr(void_ptr addr) {
   
   if (unwrap(this->is_manager())) {
     /* Skip the HTTP server if I'm the manager */
-    mem_str = this->serv_wr_rq_adapter(addr_str + payload);
+    mem_str = this->serv_rd_rq_adapter(addr_str + payload);
   } else {
     /* Otherwise, call the manager node */
     auto [mem_str_, err_]
