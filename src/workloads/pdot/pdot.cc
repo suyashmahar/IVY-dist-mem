@@ -40,7 +40,7 @@ struct shm_hdr {
   uint64_t elems;      /* Total num of elements in shm */
   uint8_t ready;       /* Signal ready to workers */
   uint64_t result[NODES_WORKER];
-  uint8_t done[NODES_WORKER]; /* Signal completion to manager */
+  uint64_t done[NODES_WORKER]; /* Signal completion to manager */
 
   /* Pad to make the header take up 1 page of space */
   uint8_t padding[libivy::Ivy::PAGE_SZ
@@ -89,7 +89,8 @@ void mult_worker(size_t id) {
   while (shm.value()->header.ready != 1) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
-  
+
+ 
   size_t elems = shm.value()->header.elems/2;
   size_t elems_per_node = (elems/NODES_WORKER);
   
@@ -102,11 +103,12 @@ void mult_worker(size_t id) {
   uint64_t *vec_ptr = shm.value()->vecs;
   
   /* Get a view into the shared memory this worker will sort */
-  span<uint64_t> vecA{&vec_ptr[startA], elems_per_node};
-  span<uint64_t> vecB{&vec_ptr[startB], elems_per_node};
+  uint64_t* vecA = &vec_ptr[startA];
+  uint64_t* vecB = &vec_ptr[startB];
 
   /* Use multiply the values */
   auto start_time = std::chrono::high_resolution_clock::now();
+
   uint64_t sum = 0;
   for (size_t i = 0; i < elems_per_node; i++) {
     sum += vecA[i] * vecB[i];
@@ -129,7 +131,12 @@ void mult_worker(size_t id) {
 	    << " for id " << id
 	    << std::endl;
   
-  shm.value()->header.done[id] = 1;
+  shm.value()->header.done[id] = 0xffffffffffffffffUL;
+
+  for (int i = 0; i < NODES_WORKER; i++) {
+    std::cout << "i = " << i << ".ready -> "
+	      << shm.value()->header.done[i] << std::endl;
+  }
   
   std::cout << "Multiply completed at " << id << std::endl;
 }
@@ -180,7 +187,7 @@ int main(int argc, char *argv[]) {
 
   shm = reinterpret_cast<shm_layout*>(shm_);
 
-  if (unwrap(ivy.is_manager())) {
+  if (id == 1) {
     while (in_f >> in_num) {
       shm.value()->vecs[in_iter++] = in_num;
     }
@@ -202,9 +209,9 @@ int main(int argc, char *argv[]) {
   }
 
   /* If this is not the manager node*/
-  if (id != 0) {
-    mult_worker(id-1);    
-  } else {
+  if (id > 1) {
+    mult_worker(id-2);
+  } else if (id == 1) {
     /* Wait for every worker to complete */
     bool all_done = false;
     while (!all_done) {
@@ -214,7 +221,7 @@ int main(int argc, char *argv[]) {
       all_done = true;
 
       for (size_t i = 0; i < NODES_WORKER; i++) {
-	if (shm.value()->header.done[i] != 1) {
+	if (shm.value()->header.done[i] == 0) {
 	  std::cout << "Checking for node " << i
 		    << " at location "
 		    << P(&shm.value()->header.done[i])
@@ -222,7 +229,6 @@ int main(int argc, char *argv[]) {
 	  std::cout << "id " << i << " is not done yet" << std::endl;
 	  /* At least one node is not ready yet, wait for it */
 	  all_done = false;
-	  break;
 	}
       }
     }
@@ -230,7 +236,7 @@ int main(int argc, char *argv[]) {
 
   std::cout << "All done" << std::endl;
 
-  if (id == 0)
+  if (id == 1)
     std::cout << "Dot product: " << merge_worker() << std::endl;
 
   while (1);

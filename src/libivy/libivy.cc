@@ -669,7 +669,7 @@ mres_t Ivy::get_wr_page_from_mngr(void_ptr addr) {
 
   /* if this node already has read access to the page, no need to copy
      it to the memory */
-  if (cur_perm != IvyAccessType::RD) {
+  if (mem_str.length() == 2*PAGE_SZ) {
     std::stringstream errmsg;
     errmsg << "Not enough bytes received from the manager, expected "
 	   << 2*PAGE_SZ << ", got " << mem_str.length()
@@ -679,6 +679,10 @@ mres_t Ivy::get_wr_page_from_mngr(void_ptr addr) {
     auto mem = from_hex(mem_str);
 
     std::memcpy(addr_aligned, mem, PAGE_SZ);
+  } else {
+    DBGH << "Not writing page " << P(addr_aligned)
+	 << " to memory, already have it"
+	 << std::endl;
   }
 
   return {};  
