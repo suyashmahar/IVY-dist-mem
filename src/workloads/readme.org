@@ -7,3 +7,5 @@
    Test workload, ping pongs messages between two processes
 ** pagefaultlatency
    Test page fault latency using libivy
+** sigsegvlatency
+   Test sigaction+mprotect latency
