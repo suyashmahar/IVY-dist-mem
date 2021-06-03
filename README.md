@@ -31,3 +31,5 @@ ul_array[0] = 0xDEADBEEF;
 // Unmount the shared memory
 ivy.drop_shm();
 ```
+## License
+Except noted otherwise and excluding content under vendor/, libivy is convered under the BSD-3-clause license. Check [LICENSE](LICENSE).
