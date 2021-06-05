@@ -1,5 +1,7 @@
 # Distributed shared virtual memory 
-Using IVY's fixed ownership model.
+Using IVY's fixed ownership model. 
+
+libivy's design and implementation is described in this paper: [docs/libivy_paper.pdf](docs/libivy_paper.pdf).
 
 ## Project structure
 1. [analysis](src/analysis/): Memory trace visualization
